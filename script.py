@@ -1,10 +1,11 @@
 # /// script
-# requires-python = ">=3.11"
+# requires-python = "==3.14"
 # dependencies = [
 #     "xdsl==0.55.4",
 # ]
 # ///
 
-# print xdsl version
 import xdsl
+import sys
 print(xdsl.__version__)
+print(sys.version)
