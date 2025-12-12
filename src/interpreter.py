@@ -4,7 +4,7 @@ from typing import Any
 
 from xdsl.interpreter import Interpreter, InterpreterFunctions, ReturnedValues, impl, impl_callable, impl_terminator, register_impls
 
-from . import ops
+import ops
 
 
 @register_impls

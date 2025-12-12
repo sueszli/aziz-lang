@@ -10,7 +10,7 @@ from xdsl.ir import Block, Region, SSAValue
 from xdsl.utils.lexer import Location
 from xdsl.utils.scoped_dict import ScopedDict
 
-from .ops import AddOp, CallOp, ConstantOp, FuncOp, MulOp, PrintOp, ReturnOp
+from ops import AddOp, CallOp, ConstantOp, FuncOp, MulOp, PrintOp, ReturnOp
 
 INDENT = 2
 
