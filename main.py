@@ -5,9 +5,13 @@
 # ]
 # ///
 
+#!/usr/bin/env python3
 import sys
+import os
 
-import xdsl
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-print(xdsl.__version__)
-print(sys.version)
+from aziz.__main__ import main
+
+if __name__ == "__main__":
+    main()
