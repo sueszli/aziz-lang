@@ -1,13 +1,6 @@
-aziz language.
+aziz-lang.
 a toy lisp-like language implemented using xDSL.
 
 ```
 $ uv run src/main.py examples/test.aziz
 ```
-
-structure:
-
-- `aziz/dialects/aziz.py`: Defines the Aziz dialect operations.
-- `aziz/frontend/ast.py`: Defines the AST.
-- `aziz/frontend/parser.py`: Parses `.aziz` files to AST.
-- `aziz/frontend/ir_gen.py`: Generates xDSL IR from AST.
