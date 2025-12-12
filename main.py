@@ -5,7 +5,9 @@
 # ]
 # ///
 
-import xdsl
 import sys
+
+import xdsl
+
 print(xdsl.__version__)
 print(sys.version)

@@ -1,0 +1,7 @@
+
+(define (multiply a b)
+  (return (* a b)))
+
+(define (main)
+  (print (multiply 3 4))
+  (return 0))
