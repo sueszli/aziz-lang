@@ -1,6 +1,16 @@
-aziz programming language.
-a tiny subset of common lisp implemented with xDSL.
+⠀⠀⢀⣤⣤⣤⣤⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⢸⣿⣿⣿⣿⣿⣷⡀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠘⠉⠉⠙⣿⣿⣿⣷⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⢸⣿⣿⣿⣧⠀⠀  aziz programming language.⠀ 
+⠀⠀⠀⠀⠀⠀⣼⣿⣿⣿⣿⣆⠀
+⠀⠀⠀⠀⠀⣼⣿⣿⣿⣿⣿⣿⡀  a tiny common lisp subset
+⠀⠀⠀⠀⣴⣿⣿⣿⠟⣿⣿⣿⣷  implemented with xDSL.
+⠀⠀⠀⣰⣿⣿⣿⡏⠀⠸⣿⣿⣿⣇
+⠀⠀⢠⣿⣿⣿⡟⠀⠀⠀⢻⣿⣿⣿⡆
+⠀⢠⣿⣿⣿⡿⠀⠀⠀⠀⠀⢿⣿⣿⣷⣤⡄
+⢀⣾⣿⣿⣿⠁⠀⠀⠀⠀⠀⠈⠿⣿⣿⣿⡇
 
-```
+
+usage:
+
 $ uv run src/main.py examples/test.aziz
-```
