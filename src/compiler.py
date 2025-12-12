@@ -158,6 +158,14 @@ class Parser:
     def _peek(self):
         return self.tokens[self.pos] if self.pos < len(self.tokens) else None
 
+    def _peek_at(self, offset: int):
+        idx = self.pos + offset
+        return self.tokens[idx] if idx < len(self.tokens) else None
+
+    def _peek_at(self, offset: int):
+        idx = self.pos + offset
+        return self.tokens[idx] if idx < len(self.tokens) else None
+
     def _consume(self):
         if self.pos >= len(self.tokens):
             raise Exception("Unexpected EOF")
@@ -181,16 +189,36 @@ class Parser:
 
     def parse_module(self) -> ModuleAST:
         funcs = []
+        main_body = []
         while self._peek():
-            funcs.append(self.parse_definition())
+            is_def = False
+            t0 = self._peek_at(0)
+            t1 = self._peek_at(1)
+            # Check for (defun ...
+            if t0 and t0[0] == "(" and t1 and t1[0] == "defun":
+                is_def = True
+
+            if is_def:
+                funcs.append(self.parse_definition())
+            else:
+                main_body.append(self.parse_expr())
+
+        if main_body:
+            # Wrap top-level expressions in a "main" function
+            # Use location of first expression for the function
+            loc = main_body[0].loc if hasattr(main_body[0], "loc") else Location(self.filename, 0, 0)
+            proto = PrototypeAST(loc, "main", [])
+            funcs.append(FunctionAST(loc, proto, tuple(main_body)))
+
         return ModuleAST(tuple(funcs))
 
     def parse_definition(self) -> FunctionAST:
         self._expect("(")
-        if (t := self._consume())[0] != "define":
-            raise Exception(f"Expected 'define', got '{t[0]}' at {self._loc(t)}")
+        if (t := self._consume())[0] != "defun":
+            raise Exception(f"Expected 'defun', got '{t[0]}' at {self._loc(t)}")
+        name_token = self._consume()
         self._expect("(")
-        name_token, args = self._consume(), []
+        args = []
         while self._peek() and self._peek()[0] != ")":
             args.append(self._consume()[0])
         self._expect(")")
@@ -267,10 +295,14 @@ class IRGen:
         for name, value in zip(func_ast.proto.args, block.args):
             self.symbol_table[name] = value
         for expr in func_ast.body:
-            self.ir_gen_expr(expr)
+            last_val = self.ir_gen_expr(expr)
 
         if not block.ops or not isinstance(block.last_op, ReturnOp):
-            self.builder.insert(ReturnOp())
+            if last_val:
+                self.builder.insert(ReturnOp(last_val))
+            else:
+                zero = self.builder.insert(ConstantOp(0)).res
+                self.builder.insert(ReturnOp(zero))
 
         ret_types = [i32] if isinstance(block.last_op, ReturnOp) and block.last_op.operands else []
         func_op = FuncOp(func_ast.proto.name, FunctionType.from_lists([i32] * len(func_ast.proto.args), ret_types), Region(block))

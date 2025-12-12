@@ -1,7 +1,7 @@
+(defun multiply (a b)
+  (* a b))
 
-(define (multiply a b)
-  (return (* a b)))
+(defun prog ()
+  (print (multiply 3 4)))
 
-(define (main)
-  (print (multiply 3 4))
-  (return 0))
+(prog)
