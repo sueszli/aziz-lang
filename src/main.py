@@ -6,20 +6,24 @@
 # ///
 
 import sys
+from pathlib import Path
 from parser import Parser
+from ast_nodes import dump
 
 from xdsl.interpreter import Interpreter
 
 from compiler import IRGen
 from interpreter import AzizFunctions
 
-assert len(sys.argv) == 2, "requires .aziz file as argument"
+assert len(sys.argv) == 2
 filename = sys.argv[1]
+assert filename.endswith(".aziz")
+prog = Path(filename).read_text()
 
-with open(filename, "r") as f:
-    prog = f.read()
+parsed = Parser(prog, filename).parse_module()
+print(f"\033[90m{dump(parsed)}\033[00m")
 
-module_op = IRGen().ir_gen_module(Parser(prog, filename).parse_module())
+module_op = IRGen().ir_gen_module(parsed)
 print(f"\033[90m{module_op}\033[00m")
 
 interpreter = Interpreter(module_op)

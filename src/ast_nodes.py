@@ -53,3 +53,17 @@ class FunctionAST:
 @dataclass(slots=True)
 class ModuleAST:
     ops: tuple[FunctionAST | ExprAST, ...]
+
+
+def dump(node: object, indent: int = 0) -> str:
+    if not isinstance(node, (ExprAST, PrototypeAST, FunctionAST, ModuleAST)):
+        return repr(node)
+    
+    ind = "  " * indent
+    def fmt(v):
+        if isinstance(v, list | tuple):
+            return f"[\n{ind}\t" + f",\n{ind}\t".join(dump(x, indent + 1) for x in v) + f"\n{ind}]" if v else "[]"
+        return dump(v, indent + 1)
+
+    fields = (f"{k}={fmt(getattr(node, k))}" for k in node.__dataclass_fields__ if k != "loc")
+    return f"{type(node).__name__}(\n{ind}  " + f",\n{ind}  ".join(fields) + f"\n{ind})"
