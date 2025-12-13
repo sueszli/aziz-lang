@@ -11,23 +11,28 @@ class AzizParser(GenericParser[AzizTokenKind]):
     def __init__(self, file: Path, program: str):
         """
         (0) calling `AzizParser` constructor
-        AzizParser(Path("hello.aziz"), "(defun main () ...)")
+
+            AzizParser(Path("hello.aziz"), "(defun main () ...)")
 
         (1) first creates an input text wrapper
-        Input("(defun main () ...)", "hello.aziz")
+
+            Input("(defun main () ...)", "hello.aziz")
 
         (2) then creates a lexer, inheriting from `Lexer`, that implements the `lex` method
-        AzizLexer(Input(...))
+
+            AzizLexer(Input(...))
 
         (3) then creates a parser state. calls `lex()` to get the first token
-        ParserState(AzizLexer(...))
-        └─> self.lexer = AzizLexer(...)
-        └─> self.current_token = lexer.lex()
-        └─> self.dialect_stack = ["builtin"]
+
+            ParserState(AzizLexer(...))
+            └─> self.lexer = AzizLexer(...)
+            └─> self.current_token = lexer.lex()
+            └─> self.dialect_stack = ["builtin"]
 
         (4) finally calls GenericParser constructor
-        super().__init__(ParserState(...))
-        └─> self._parser_state = ParserState(...)
+
+            super().__init__(ParserState(...))
+            └─> self._parser_state = ParserState(...)
 
         (5) then we can call `.parse_module()` to parse the module
         """

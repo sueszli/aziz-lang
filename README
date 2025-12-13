@@ -10,7 +10,7 @@
 ⠀⢠⣿⣿⣿⡿⠀⠀⠀⠀⠀⢿⣿⣿⣷⣤⡄
 ⢀⣾⣿⣿⣿⠁⠀⠀⠀⠀⠀⠈⠿⣿⣿⣿⡇
 
-based on the toy language from the xDSL documentation:
+based on the toy language from the docs:
 https://github.com/xdslproject/xdsl/tree/main/docs/Toy
 
 usage:
