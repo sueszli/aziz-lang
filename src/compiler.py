@@ -11,46 +11,22 @@ from ops import AddOp, CallOp, ConstantOp, FuncOp, IfOp, LessThanEqualOp, MulOp,
 
 @dataclass
 class IRGen:
-    module: ModuleOp = ModuleOp([])
-    builder: Builder = None
-    symbol_table: ScopedDict[str, SSAValue] | None = None
+    module: ModuleOp = ModuleOp([])  # source file
+    builder: Builder = None  # IR builder inside function. keeps "insertion point" state for next op insertion
+    symbol_table: ScopedDict[str, SSAValue] | None = None  # variable name -> SSA value (within current scope, destroyed after function ends)
     function_signatures: dict[str, tuple[list[Attribute], Attribute]] = None  # name -> (arg_types, return_type)
 
     def __post_init__(self):
-        self.builder = Builder(InsertPoint.at_end(self.module.body.blocks[0]))
+        self.builder = Builder(InsertPoint.at_end(self.module.body.blocks[0]))  # requires empty module body block
         self.function_signatures = {}
 
-    def infer_type_from_expr(self, expr: ExprAST) -> Attribute:
-        """Infer the type of an expression without generating IR."""
-        if isinstance(expr, NumberExprAST):
-            return f64 if isinstance(expr.val, float) else i32
-        if isinstance(expr, StringExprAST):
-            return string_type
-        # For other expressions, default to i32
-        return i32
-
-    def collect_function_signatures(self, module_ast: ModuleAST):
-        """First pass: collect function signatures from call sites."""
-        for op in module_ast.ops:
-            if isinstance(op, CallExprAST):
-                arg_types = [self.infer_type_from_expr(arg) for arg in op.args]
-                # Infer return type - for now, use the type of the first argument
-                ret_type = arg_types[0] if arg_types else i32
-                self.function_signatures[op.callee] = (arg_types, ret_type)
-            elif isinstance(op, PrintExprAST):
-                if isinstance(op.arg, CallExprAST):
-                    arg_types = [self.infer_type_from_expr(arg) for arg in op.arg.args]
-                    ret_type = arg_types[0] if arg_types else i32
-                    self.function_signatures[op.arg.callee] = (arg_types, ret_type)
-
     def ir_gen_module(self, module_ast: ModuleAST) -> ModuleOp:
-        # First pass: collect function signatures
-        self.collect_function_signatures(module_ast)
+        self._collect_function_signatures(module_ast)
 
         main_body = []
         for op in module_ast.ops:
             if isinstance(op, FunctionAST):
-                self.ir_gen_function(op)
+                self._ir_gen_function(op)
             elif isinstance(op, ExprAST):
                 main_body.append(op)
 
@@ -58,12 +34,35 @@ class IRGen:
             # create a main function for top-level expressions
             loc = main_body[0].loc
             main_func = FunctionAST(loc, PrototypeAST(loc, "main", []), tuple(main_body))
-            self.ir_gen_function(main_func)
+            self._ir_gen_function(main_func)
 
         self.module.verify()
         return self.module
 
-    def ir_gen_function(self, func_ast: FunctionAST) -> FuncOp:
+    def _collect_function_signatures(self, module_ast: ModuleAST):
+        # first pass: collect function signatures from call sites.
+        for op in module_ast.ops:
+            if isinstance(op, CallExprAST):
+                arg_types = [self._infer_type_from_expr(arg) for arg in op.args]
+                # Infer return type - for now, use the type of the first argument
+                ret_type = arg_types[0] if arg_types else i32
+                self.function_signatures[op.callee] = (arg_types, ret_type)
+            elif isinstance(op, PrintExprAST):
+                if isinstance(op.arg, CallExprAST):
+                    arg_types = [self._infer_type_from_expr(arg) for arg in op.arg.args]
+                    ret_type = arg_types[0] if arg_types else i32
+                    self.function_signatures[op.arg.callee] = (arg_types, ret_type)
+
+    def _infer_type_from_expr(self, expr: ExprAST) -> Attribute:
+        # Infer the type of an expression without generating IR.
+        if isinstance(expr, NumberExprAST):
+            return f64 if isinstance(expr.val, float) else i32
+        if isinstance(expr, StringExprAST):
+            return string_type
+        # For other expressions, default to i32
+        return i32
+
+    def _ir_gen_function(self, func_ast: FunctionAST) -> FuncOp:
         parent_builder, self.symbol_table = self.builder, ScopedDict()
 
         # Get function signature from first pass, or default to i32
@@ -81,7 +80,7 @@ class IRGen:
 
         last_val = None
         for expr in func_ast.body:
-            last_val = self.ir_gen_expr(expr)
+            last_val = self._ir_gen_expr(expr)
 
         if not block.ops or not isinstance(block.last_op, ReturnOp):
             val = last_val if last_val else self.builder.insert(ConstantOp(0)).res
@@ -93,9 +92,9 @@ class IRGen:
         self.builder = parent_builder
         return self.builder.insert(func_op)
 
-    def ir_gen_expr(self, expr: ExprAST) -> SSAValue | None:
+    def _ir_gen_expr(self, expr: ExprAST) -> SSAValue | None:
         if isinstance(expr, BinaryExprAST):
-            lhs, rhs = self.ir_gen_expr(expr.lhs), self.ir_gen_expr(expr.rhs)
+            lhs, rhs = self._ir_gen_expr(expr.lhs), self._ir_gen_expr(expr.rhs)
             if expr.op == "+":
                 return self.builder.insert(AddOp(lhs, rhs)).res
             if expr.op == "*":
@@ -115,7 +114,7 @@ class IRGen:
             return self.symbol_table[expr.name]
 
         if isinstance(expr, CallExprAST):
-            args = [self.ir_gen_expr(arg) for arg in expr.args]
+            args = [self._ir_gen_expr(arg) for arg in expr.args]
             # Get return type from function signature
             ret_type = i32
             if expr.callee in self.function_signatures:
@@ -123,23 +122,23 @@ class IRGen:
             return self.builder.insert(CallOp(expr.callee, args, [ret_type])).res[0]
 
         if isinstance(expr, PrintExprAST):
-            self.builder.insert(PrintOp(self.ir_gen_expr(expr.arg)))
+            self.builder.insert(PrintOp(self._ir_gen_expr(expr.arg)))
             return None
 
         if isinstance(expr, IfExprAST):
-            cond = self.ir_gen_expr(expr.cond)
+            cond = self._ir_gen_expr(expr.cond)
             if_op = IfOp(cond)
             self.builder.insert(if_op)
 
             # Generate Then Block
             cursor = self.builder
             self.builder = Builder(InsertPoint.at_end(if_op.then_region.blocks[0]))
-            then_result = self.ir_gen_expr(expr.then_expr)
+            then_result = self._ir_gen_expr(expr.then_expr)
             self.builder.insert(YieldOp(then_result))
 
             # Generate Else Block
             self.builder = Builder(InsertPoint.at_end(if_op.else_region.blocks[0]))
-            else_result = self.ir_gen_expr(expr.else_expr)
+            else_result = self._ir_gen_expr(expr.else_expr)
             self.builder.insert(YieldOp(else_result))
 
             self.builder = cursor
