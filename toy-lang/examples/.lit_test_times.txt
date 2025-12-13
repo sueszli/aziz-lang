@@ -1,0 +1,7 @@
+3.784211e-01 ast.toy
+3.783691e-01 codegen.toy
+2.782067e+00 interpret.toy
+3.651757e-01 scalar.toy
+3.730309e-01 tests/infer_shapes.mlir
+3.660560e-01 tests/inline.mlir
+3.655918e-01 tests/optimise_toy.mlir
