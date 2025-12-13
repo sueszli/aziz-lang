@@ -20,10 +20,10 @@ filename = sys.argv[1]
 assert filename.endswith(".aziz")
 src = Path(filename).read_text()
 
-parsed = AzizParser("in_memory", src).parse_module()
-print(f"\n\033[90m{dump(parsed)}\033[00m\n", "-" * 80)
+module_ast = AzizParser("in_memory", src).parse_module()
+print(f"\n\033[90m{dump(module_ast)}\033[00m\n", "-" * 80)
 
-module_op = IRGen().ir_gen_module(parsed)
+module_op = IRGen().ir_gen_module(module_ast)
 print(f"\n\033[90m{module_op}\033[00m\n", "-" * 80)
 
 interpreter = Interpreter(module_op)
