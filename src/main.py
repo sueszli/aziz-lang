@@ -6,14 +6,14 @@
 # ///
 
 import sys
-from parser import AzizParser
 from pathlib import Path
 
 from xdsl.interpreter import Interpreter
 
-from ast_nodes import dump
+from frontend.ast_nodes import dump
+from frontend.ir_gen import IRGen
+from frontend.parser import AzizParser
 from interpreter import AzizFunctions
-from ir_gen import IRGen
 
 assert len(sys.argv) == 2
 filename = sys.argv[1]
