@@ -27,7 +27,7 @@ class IRGen:
                 main_body.append(op)
 
         if main_body:
-            # Synthesize a main function for top-level expressions
+            # create a main function for top-level expressions
             loc = main_body[0].loc
             main_func = FunctionAST(loc, PrototypeAST(loc, "main", []), tuple(main_body))
             self.ir_gen_function(main_func)

@@ -10,12 +10,17 @@ class ExprAST:
 
 @dataclass(slots=True)
 class NumberExprAST(ExprAST):
-    val: int
+    val: int | float
 
 
 @dataclass(slots=True)
 class VariableExprAST(ExprAST):
     name: str
+
+
+@dataclass(slots=True)
+class StringExprAST(ExprAST):
+    val: str
 
 
 @dataclass(slots=True)
