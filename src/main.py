@@ -18,9 +18,9 @@ from interpreter import AzizFunctions
 assert len(sys.argv) == 2
 filename = sys.argv[1]
 assert filename.endswith(".aziz")
-prog = Path(filename).read_text()
+src = Path(filename).read_text()
 
-parsed = AzizParser(Path(filename), prog).parse_module()
+parsed = AzizParser("in_memory", src).parse_module()
 print(f"\n\033[90m{dump(parsed)}\033[00m\n", "-" * 80)
 
 module_op = IRGen().ir_gen_module(parsed)
