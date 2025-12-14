@@ -1,3 +1,7 @@
+(defun get_msg ()
+  "hello world!")
+(print (get_msg))
+
 (defun factorial (n)
   (if (<= n 1)
       1

@@ -18,7 +18,7 @@ class IRGen:
     module: ModuleOp  # generated MLIR ModuleOp from AST
     builder: Builder  # keeps current insertion point for next op
     symbol_table: ScopedDict[str, SSAValue] | None = None  # variable name -> SSAValue for current scope. dropped on scope exit
-    declarations: dict[str, FuncOp]  # function name -> FuncOp (required for type lookup on calls)
+    declarations: dict[str, FuncOp]  # function name -> FuncOp (required for dedup on recursion)
 
     def __init__(self):
         self.module = ModuleOp([])
@@ -35,11 +35,8 @@ class IRGen:
             main_func = FunctionAST(loc, PrototypeAST(loc, "main", []), tuple(main_body))
             functions.append(main_func)
 
-        # pass 1: declare all functions
         for func_ast in functions:
             self._declare_function(func_ast)
-
-        # pass 2: define all functions
         for func_ast in functions:
             self._define_function(func_ast)
 
@@ -48,13 +45,11 @@ class IRGen:
         return self.module
 
     def _declare_function(self, func_ast: FunctionAST):
-        # don't generate body yet and just set default i32 types for args and return
-        # this is slightly more sophisticated than the original toy example
+        # create FuncOp with correct name, but default i32 type and empty body for now
         arg_types = [i32] * len(func_ast.proto.args)
         return_types = [i32]
-        func_type = FunctionType.from_lists(arg_types, return_types)
+        func_type = FunctionType.from_lists(inputs=arg_types, outputs=return_types)
 
-        # create region with entry block having the correct argument types
         block = Block(arg_types=arg_types)
         region = Region(block)
 
@@ -63,45 +58,40 @@ class IRGen:
         self.declarations[func_ast.proto.name] = func_op
 
     def _define_function(self, func_ast: FunctionAST):
-        """
-        Populate the body of the previously declared FuncOp.
-        """
         func_op = self.declarations[func_ast.proto.name]
         block = func_op.body.blocks[0]
 
-        # Save current builder and symbol table
+        # save current builder and symbol table
         parent_builder = self.builder
         self.symbol_table = ScopedDict()
         self.builder = Builder(InsertPoint.at_end(block))
 
-        # Register arguments in symbol table
+        # init argument variables in symbol table
         for name, value in zip(func_ast.proto.args, block.args):
             self._declare(name, value)
 
+        # generate body
         last_val = None
         for expr in func_ast.body:
             last_val = self._ir_gen_expr(expr)
 
-        # Return handling
         return_types = []
         if not block.ops or not isinstance(block.last_op, ReturnOp):
-            # Implicit return
+            # return 0 by default
             val = last_val if last_val is not None else self.builder.insert(ConstantOp(0)).res
             self.builder.insert(ReturnOp(val))
             return_types = [val.type]
-        else:
-            # Explicit return exists, infer type from it
-            if block.last_op.input:
-                return_types = [block.last_op.input.type]
+        elif block.last_op.input:
+            # infer return type from last return value
+            return_types = [block.last_op.input.type]
 
-        # Check if we need to update the function signature
+        # update function signature if necessary
         current_return_types = func_op.function_type.outputs.data
         if list(current_return_types) != return_types:
-            # Update FuncOp signature
-            func_type = FunctionType.from_lists(func_op.function_type.inputs.data, return_types)
+            func_type = FunctionType.from_lists(inputs=func_op.function_type.inputs.data, outputs=return_types)
             func_op.function_type = func_type
 
-        # Restore state
+        # restore state
         self.symbol_table = None
         self.builder = parent_builder
 
