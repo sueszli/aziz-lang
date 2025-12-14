@@ -3,14 +3,14 @@
 ⠀⠀⠘⠉⠉⠙⣿⣿⣿⣷⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⢸⣿⣿⣿⣧⠀⠀     aziz programming language.
 ⠀⠀⠀⠀⠀⠀⣼⣿⣿⣿⣿⣆⠀
-⠀⠀⠀⠀⠀⣼⣿⣿⣿⣿⣿⣿⡀     a common lisp subset
-⠀⠀⠀⠀⣴⣿⣿⣿⠟⣿⣿⣿⣷     with an MLIR-based compiler
-⠀⠀⠀⣰⣿⣿⣿⡏⠀⠸⣿⣿⣿⣇    using xDSL infrastructure.
+⠀⠀⠀⠀⠀⣼⣿⣿⣿⣿⣿⣿⡀     a subset of common lisp
+⠀⠀⠀⠀⣴⣿⣿⣿⠟⣿⣿⣿⣷     implemented with xDSL.
+⠀⠀⠀⣰⣿⣿⣿⡏⠀⠸⣿⣿⣿⣇ 
 ⠀⠀⢠⣿⣿⣿⡟⠀⠀⠀⢻⣿⣿⣿⡆
 ⠀⢠⣿⣿⣿⡿⠀⠀⠀⠀⠀⢿⣿⣿⣷⣤⡄
 ⢀⣾⣿⣿⣿⠁⠀⠀⠀⠀⠀⠈⠿⣿⣿⣿⡇
 
-usage
+usage:
 
 ```
 uv run src/main.py examples/hello.aziz
@@ -19,7 +19,7 @@ uv run src/main.py examples/rec.aziz
 uv run src/main.py examples/test.aziz
 ```
 
-references
+references:
 
 - https://mlir.llvm.org/docs/Tutorials/Toy/
 - https://github.com/xdslproject/xdsl/tree/main/docs/Toy

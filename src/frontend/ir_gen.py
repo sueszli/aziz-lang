@@ -18,38 +18,63 @@ class IRGen:
     module: ModuleOp  # generated MLIR ModuleOp from AST
     builder: Builder  # keeps current insertion point for next op
     symbol_table: ScopedDict[str, SSAValue] | None = None  # variable name -> SSAValue for current scope. dropped on scope exit
+    declarations: dict[str, FuncOp]  # function name -> FuncOp (required for type lookup on calls)
 
     def __init__(self):
         self.module = ModuleOp([])
         self.builder = Builder(InsertPoint.at_end(self.module.body.blocks[0]))
+        self.declarations = {}
 
     def ir_gen_module(self, module_ast: ModuleAST) -> ModuleOp:
-        # top level functions
-        for op in module_ast.ops:
-            if isinstance(op, FunctionAST):
-                self._ir_gen_function(op)
+        functions = [op for op in module_ast.ops if isinstance(op, FunctionAST)]
 
         # implicit main function
         main_body = [op for op in module_ast.ops if isinstance(op, ExprAST)]
         if main_body:
             loc = main_body[0].loc
             main_func = FunctionAST(loc, PrototypeAST(loc, "main", []), tuple(main_body))
-            self._ir_gen_function(main_func)
+            functions.append(main_func)
+
+        # pass 1: declare all functions
+        for func_ast in functions:
+            self._declare_function(func_ast)
+
+        # pass 2: define all functions
+        for func_ast in functions:
+            self._define_function(func_ast)
 
         # verify types
         self.module.verify()
         return self.module
 
-    def _ir_gen_function(self, func_ast: FunctionAST) -> FuncOp:
+    def _declare_function(self, func_ast: FunctionAST):
+        # don't generate body yet and just set default i32 types for args and return
+        # this is slightly more sophisticated than the original toy example
+        arg_types = [i32] * len(func_ast.proto.args)
+        return_types = [i32]
+        func_type = FunctionType.from_lists(arg_types, return_types)
+
+        # create region with entry block having the correct argument types
+        block = Block(arg_types=arg_types)
+        region = Region(block)
+
+        func_op = FuncOp(func_ast.proto.name, func_type, region)
+        self.module.body.blocks[0].add_op(func_op)
+        self.declarations[func_ast.proto.name] = func_op
+
+    def _define_function(self, func_ast: FunctionAST):
+        """
+        Populate the body of the previously declared FuncOp.
+        """
+        func_op = self.declarations[func_ast.proto.name]
+        block = func_op.body.blocks[0]
+
+        # Save current builder and symbol table
         parent_builder = self.builder
         self.symbol_table = ScopedDict()
-
-        # Default argument types to i32 for now, mirroring toy's unranked tensor assumption -----> this is stupid
-        arg_types = [i32] * len(func_ast.proto.args)
-
-        block = Block(arg_types=arg_types)
         self.builder = Builder(InsertPoint.at_end(block))
 
+        # Register arguments in symbol table
         for name, value in zip(func_ast.proto.args, block.args):
             self._declare(name, value)
 
@@ -57,23 +82,28 @@ class IRGen:
         for expr in func_ast.body:
             last_val = self._ir_gen_expr(expr)
 
+        # Return handling
         return_types = []
         if not block.ops or not isinstance(block.last_op, ReturnOp):
-            # Implicit return. If last_val exists, return it, else return 0.
+            # Implicit return
             val = last_val if last_val is not None else self.builder.insert(ConstantOp(0)).res
             self.builder.insert(ReturnOp(val))
-            return_types = [i32]
+            return_types = [val.type]
         else:
             # Explicit return exists, infer type from it
             if block.last_op.input:
                 return_types = [block.last_op.input.type]
 
-        func_type = FunctionType.from_lists(arg_types, return_types)
-        func_op = FuncOp(func_ast.proto.name, func_type, Region(block))
+        # Check if we need to update the function signature
+        current_return_types = func_op.function_type.outputs.data
+        if list(current_return_types) != return_types:
+            # Update FuncOp signature
+            func_type = FunctionType.from_lists(func_op.function_type.inputs.data, return_types)
+            func_op.function_type = func_type
 
+        # Restore state
         self.symbol_table = None
         self.builder = parent_builder
-        return self.builder.insert(func_op)
 
     def _declare(self, var: str, value: SSAValue) -> bool:
         # declare a variable in the current scope, return success if not already declared
@@ -82,7 +112,6 @@ class IRGen:
             return False
         self.symbol_table[var] = value
         return True
-
 
     def _ir_gen_expr(self, expr: ExprAST) -> SSAValue:
         if isinstance(expr, BinaryExprAST):
@@ -127,9 +156,15 @@ class IRGen:
 
     def _ir_gen_call_expr(self, expr: CallExprAST) -> SSAValue:
         args = [self._ir_gen_expr(arg) for arg in expr.args]
-        # Default return type to i32, similar to how toy uses generic UnrankedTensorType
-        ret_type = i32
-        # Note: Toy uses GenericCallOp. Aziz uses CallOp which expects explicit type.
+
+        # Look up the callee to get the return type
+        if expr.callee not in self.declarations:
+            raise IRGenError(f"Unknown function called: {expr.callee}")
+
+        callee_op = self.declarations[expr.callee]
+        # We assume single result for now
+        ret_type = callee_op.function_type.outputs.data[0]
+
         return self.builder.insert(CallOp(expr.callee, args, [ret_type])).res[0]
 
     def _ir_gen_print_expr(self, expr: PrintExprAST) -> None:
@@ -137,16 +172,6 @@ class IRGen:
 
     def _ir_gen_if_expr(self, expr: IfExprAST) -> SSAValue:
         cond = self._ir_gen_expr(expr.cond)
-        # IfOp expects a result type. We need to infer it.
-        # Since we are single pass, we might have to assume i32 or infer from 'then' branch?
-        # Toy doesn't have IfExpr in the reference file I read?
-        # I'll stick to inferring from 'then' branch recursively, or default i32.
-        # Let's try to be smart enough to peek? No, _ir_gen_expr returns SSAValue, which has type.
-        # But we need to create the IfOp *before* filling regions?
-        # Wait, xDSL IfOp usually allows building regions attached to it.
-        # Aziz IfOp: `res = result_def(...)`.
-        # We can compile `then` expr into a temporary block to get its type?
-        # Or just assume i32 for now to match the "simplification" goal.
 
         if_op = IfOp(cond, i32)  # Defaulting to i32 result
         self.builder.insert(if_op)

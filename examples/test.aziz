@@ -16,3 +16,6 @@
 (print "String with (parens) inside")
 (print "(more")
 (print "data)")
+
+(defun get_msg () "hello")
+(print (get_msg))
