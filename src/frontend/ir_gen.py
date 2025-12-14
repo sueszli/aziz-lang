@@ -120,7 +120,7 @@ class IRGen:
         if isinstance(expr, StringExprAST):
             return self._ir_gen_string_expr(expr)
 
-        raise IRGenError(f"Unknown expr: {expr}")
+        raise IRGenError(f"unknown expr: {expr}")
 
     def _ir_gen_binary_expr(self, expr: BinaryExprAST) -> SSAValue:
         lhs = self._ir_gen_expr(expr.lhs)
@@ -128,32 +128,29 @@ class IRGen:
 
         if expr.op == "+":
             return self.builder.insert(AddOp(lhs, rhs)).res
-        if expr.op == "*":
-            return self.builder.insert(MulOp(lhs, rhs)).res
         if expr.op == "-":
             return self.builder.insert(SubOp(lhs, rhs)).res
+        if expr.op == "*":
+            return self.builder.insert(MulOp(lhs, rhs)).res
         if expr.op == "<=":
             return self.builder.insert(LessThanEqualOp(lhs, rhs)).res
-        raise IRGenError(f"Unknown op {expr.op}")
+        raise IRGenError(f"unknown op {expr.op}")
 
     def _ir_gen_number_expr(self, expr: NumberExprAST) -> SSAValue:
         return self.builder.insert(ConstantOp(expr.val)).res
 
     def _ir_gen_variable_expr(self, expr: VariableExprAST) -> SSAValue:
         if self.symbol_table is None or expr.name not in self.symbol_table:
-            raise IRGenError(f"Undefined var {expr.name}")
+            raise IRGenError(f"undefined var {expr.name}")
         return self.symbol_table[expr.name]
 
     def _ir_gen_call_expr(self, expr: CallExprAST) -> SSAValue:
         args = [self._ir_gen_expr(arg) for arg in expr.args]
 
-        # Look up the callee to get the return type
         if expr.callee not in self.declarations:
-            raise IRGenError(f"Unknown function called: {expr.callee}")
-
+            raise IRGenError(f"unknown function called: {expr.callee}")
         callee_op = self.declarations[expr.callee]
-        # We assume single result for now
-        ret_type = callee_op.function_type.outputs.data[0]
+        ret_type = callee_op.function_type.outputs.data[0] # assume single result
 
         return self.builder.insert(CallOp(expr.callee, args, [ret_type])).res[0]
 
