@@ -150,8 +150,10 @@ class IfOp(IRDLOperation):
     res = result_def(AnyOf([IntegerType, AnyFloat, StringType]))
     then_region, else_region = region_def(), region_def()
 
-    def __init__(self, cond: SSAValue, result_type: Attribute = i32):
-        super().__init__(operands=[cond], result_types=[result_type], regions=[Region(Block()), Region(Block())])
+    def __init__(self, cond: SSAValue, result_type: Attribute = i32, regions: list[Region] | None = None):
+        if regions is None:
+            regions = [Region(Block()), Region(Block())]
+        super().__init__(operands=[cond], result_types=[result_type], regions=regions)
 
 
 Aziz = Dialect("aziz", [ConstantOp, StringConstantOp, AddOp, SubOp, MulOp, LessThanEqualOp, PrintOp, FuncOp, ReturnOp, CallOp, YieldOp, IfOp], [StringType])

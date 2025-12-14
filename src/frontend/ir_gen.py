@@ -179,22 +179,30 @@ class IRGen:
     def _ir_gen_if_expr(self, expr: IfExprAST) -> SSAValue:
         cond = self._ir_gen_expr(expr.cond)
 
-        # TODO: Infer result type correctly instead of defaulting to i32
-        if_op = IfOp(cond, i32)
-        self.builder.insert(if_op)
-
-        # Then
+        # then
+        then_block = Block()
+        then_region = Region(then_block)
         cursor = self.builder
-        self.builder = Builder(InsertPoint.at_end(if_op.then_region.blocks[0]))
+        self.builder = Builder(InsertPoint.at_end(then_block))
         then_val = self._ir_gen_expr(expr.then_expr)
         self.builder.insert(YieldOp(then_val))
 
-        # Else
-        self.builder = Builder(InsertPoint.at_end(if_op.else_region.blocks[0]))
+        # else
+        else_block = Block()
+        else_region = Region(else_block)
+        self.builder = Builder(InsertPoint.at_end(else_block))
         else_val = self._ir_gen_expr(expr.else_expr)
         self.builder.insert(YieldOp(else_val))
 
+        # restore builder
         self.builder = cursor
+
+        # check types
+        if then_val.type != else_val.type:
+            raise IRGenError(f"if expression branches have different types: {then_val.type} vs {else_val.type}")
+
+        if_op = IfOp(cond, then_val.type, [then_region, else_region])
+        self.builder.insert(if_op)
         return if_op.res
 
     def _ir_gen_string_expr(self, expr: StringExprAST) -> SSAValue:
