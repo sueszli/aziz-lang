@@ -26,11 +26,11 @@ filename = args.file
 assert filename.endswith(".aziz")
 src = Path(filename).read_text()
 
-module_ast = AzizParser("in_memory", src).parse_module()
+module_ast = AzizParser("in_memory", src).parse_module() # source -> ast
 if args.ast:
     print(dump(module_ast), "\n")
 
-module_op = IRGen().ir_gen_module(module_ast)
+module_op = IRGen().ir_gen_module(module_ast) # ast -> mlir
 if args.mlir:
     print(module_op, "\n")
 
