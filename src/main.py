@@ -28,7 +28,6 @@ src = Path(filename).read_text()
 
 module_ast = AzizParser("in_memory", src).parse_module()
 if args.ast:
-    module_op = IRGen().ir_gen_module(module_ast)
     print(dump(module_ast), "\n")
 
 module_op = IRGen().ir_gen_module(module_ast)
