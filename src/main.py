@@ -5,7 +5,7 @@
 # ]
 # ///
 
-import sys
+import argparse
 from pathlib import Path
 
 from xdsl.interpreter import Interpreter
@@ -15,17 +15,27 @@ from frontend.ir_gen import IRGen
 from frontend.parser import AzizParser
 from interpreter import AzizFunctions
 
-assert len(sys.argv) == 2
-filename = sys.argv[1]
+parser = argparse.ArgumentParser(description="aziz language")
+parser.add_argument("file", help="source file")
+parser.add_argument("--ir", required=True, action="store_true", help="print IR")
+parser.add_argument("--mlir", action="store_true", help="print MLIR")
+parser.add_argument("--interpret", action="store_true", help="Interpret the code")
+args = parser.parse_args()
+
+filename = args.file
 assert filename.endswith(".aziz")
 src = Path(filename).read_text()
 
 module_ast = AzizParser("in_memory", src).parse_module()
-print(f"\n\033[90m{dump(module_ast)}\033[00m\n", "-" * 80)
+if args.ir:
+    module_op = IRGen().ir_gen_module(module_ast)
+    print(dump(module_ast), "\n")
 
 module_op = IRGen().ir_gen_module(module_ast)
-print(f"\n\033[90m{module_op}\033[00m\n", "-" * 80)
+if args.mlir:
+    print(module_op, "\n")
 
-interpreter = Interpreter(module_op)
-interpreter.register_implementations(AzizFunctions())
-interpreter.call_op("main", ())
+if args.interpret:
+    interpreter = Interpreter(module_op)
+    interpreter.register_implementations(AzizFunctions())
+    interpreter.call_op("main", ())

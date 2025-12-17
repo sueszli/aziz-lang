@@ -14,8 +14,8 @@ usage:
 
 ```
 uv run src/main.py examples/hello.aziz
-uv run src/main.py examples/if.aziz
 uv run src/main.py examples/rec.aziz
+uv run src/main.py examples/if.aziz
 uv run src/main.py examples/test.aziz
 
 
