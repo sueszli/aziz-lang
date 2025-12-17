@@ -12,11 +12,11 @@ class AzizParser(GenericParser[AzizTokenKind]):
         """
         (0) calling `AzizParser` constructor
 
-            AzizParser(Path("hello.aziz"), "(defun main () ...)")
+            AzizParser(Path("./hello.aziz"), "(defun hello_world (...)")
 
         (1) first creates an input text wrapper
 
-            Input("(defun main () ...)", "hello.aziz")
+            Input("(defun hello_world (...)", "./hello.aziz")
 
         (2) then creates a lexer, inheriting from `Lexer`, that implements the `lex` method
 

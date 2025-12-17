@@ -38,7 +38,7 @@ AzizToken: TypeAlias = Token[AzizTokenKind]
 
 
 class AzizLexer(Lexer[AzizTokenKind]):
-    def lex(self) -> AzizToken:  # entry point, implements abstract method by parent class
+    def lex(self) -> AzizToken:  # entry point, implements abstract method from parent class
         self._consume_whitespace()
 
         start_pos = self.pos
