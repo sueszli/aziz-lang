@@ -1,7 +1,8 @@
 from dialects import aziz
 from xdsl.context import Context
-from xdsl.dialects import arith, func, printf, scf
-from xdsl.dialects.builtin import AnyFloat, FloatAttr, IntegerAttr, IntegerType, ModuleOp
+from xdsl.dialects import arith, func, memref, printf, scf
+from xdsl.dialects.builtin import AnyFloat, FloatAttr, IndexType, IntegerAttr, IntegerType, ModuleOp, StringAttr, i8
+from xdsl.ir import Block, Region
 from xdsl.passes import ModulePass
 from xdsl.pattern_rewriter import GreedyRewritePatternApplier, PatternRewriter, PatternRewriteWalker, RewritePattern, op_type_rewrite_pattern
 from xdsl.rewriter import InsertPoint
@@ -53,10 +54,72 @@ class ConstantOpLowering(RewritePattern):
             rewriter.replace_op(op, arith.ConstantOp(val))
 
 
+# todo: fix this weird string stuff?
+class StringConstantOpLowering(RewritePattern):
+    @op_type_rewrite_pattern
+    def match_and_rewrite(self, op: aziz.StringConstantOp, rewriter: PatternRewriter):
+        val = op.value
+        assert isinstance(val, StringAttr)
+        string_val = val.data
+        # convert the string to utf-8 bytes and store them in an i8 memref
+        encoded_val = val.data.encode("utf-8")
+        str_len = len(encoded_val)
+
+        # allocate memref of size [len] x i8
+        alloc = memref.AllocOp.get(i8, None, [str_len])
+        rewriter.insert_op(alloc, InsertPoint.before(op))
+
+        # store each character
+        for i, char in enumerate(encoded_val):
+            char_val = arith.ConstantOp(IntegerAttr(char, i8))
+            rewriter.insert_op(char_val, InsertPoint.before(op))
+            idx = arith.ConstantOp(IntegerAttr(i, IndexType()))
+            rewriter.insert_op(idx, InsertPoint.before(op))
+            store = memref.StoreOp.get(char_val, alloc, [idx])
+            rewriter.insert_op(store, InsertPoint.before(op))
+
+        # todo: dealloc the memref so we don't leak
+        rewriter.replace_op(op, [], [alloc.memref])
+
+
+# todo: fix this weird string stuff?
 class PrintOpLowering(RewritePattern):
     @op_type_rewrite_pattern
     def match_and_rewrite(self, op: aziz.PrintOp, rewriter: PatternRewriter):
-        rewriter.replace_op(op, printf.PrintFormatOp("{}", op.input))
+        if isinstance(op.input.type, memref.MemRefType):
+            # it's a string (memref<...xi8>)
+            memref_type = op.input.type
+            shape = memref_type.get_shape()
+            assert len(shape) == 1
+            size = shape[0]
+
+            # create a loop to print characters one by one
+            # manual region construction for scf.ForOp
+            lb = arith.ConstantOp(IntegerAttr(0, IndexType()))
+            ub = arith.ConstantOp(IntegerAttr(size, IndexType()))
+            step = arith.ConstantOp(IntegerAttr(1, IndexType()))
+
+            rewriter.insert_op(lb, InsertPoint.before(op))
+            rewriter.insert_op(ub, InsertPoint.before(op))
+            rewriter.insert_op(step, InsertPoint.before(op))
+
+            # type matches bounds (index)
+            block = Block(arg_types=[IndexType()])
+            iv = block.args[0]
+
+            load = memref.LoadOp.get(op.input, [iv])
+            block.add_op(load)
+
+            prt = printf.PrintFormatOp("{}", load.res)
+            block.add_op(prt)
+
+            block.add_op(scf.YieldOp())
+
+            loop = scf.ForOp(lb, ub, step, [], Region(block))
+            rewriter.replace_op(op, loop)
+
+        else:
+            rewriter.replace_op(op, printf.PrintFormatOp("{}", op.input))
 
 
 class ReturnOpLowering(RewritePattern):
@@ -117,6 +180,7 @@ class LowerAzizPass(ModulePass):
                     MulOpLowering(),
                     LessThanEqualOpLowering(),
                     ConstantOpLowering(),
+                    StringConstantOpLowering(),
                     PrintOpLowering(),
                     ReturnOpLowering(),
                     FuncOpLowering(),

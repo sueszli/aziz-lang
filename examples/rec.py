@@ -17,14 +17,6 @@ from xdsl.ir import Block, Region, SSAValue
 @Builder.implicit_region
 def module_op():
 
-    # (defun get_msg () "hello world!")
-    @Builder.implicit_region
-    def get_msg():
-        s = aziz.StringConstantOp("hello world!").res
-        aziz.ReturnOp(s)
-
-    aziz.FuncOp("get_msg", FunctionType.from_lists([], [aziz.StringType()]), get_msg)
-
     # (defun factorial (n) (if (<= n 1) 1 (* n (factorial (- n 1)))))
     @Builder.implicit_region([i32])
     def factorial(args: tuple[SSAValue, ...]):
@@ -54,9 +46,6 @@ def module_op():
     # (print (factorial 5))
     @Builder.implicit_region
     def main():
-        msg_call = aziz.CallOp("get_msg", [], [aziz.StringType()])
-        aziz.PrintOp(msg_call.res[0])
-
         five = aziz.ConstantOp(5).res
         fact_call = aziz.CallOp("factorial", [five], [i32])
         aziz.PrintOp(fact_call.res[0])
