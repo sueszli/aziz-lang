@@ -36,8 +36,6 @@ uv run aziz-lang/main.py examples/rec.aziz --interpret
 ```
 
 
-ir_gen does lots of weird shit
-
 fix optimize.py, fix main.py
 
 
