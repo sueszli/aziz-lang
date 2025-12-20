@@ -29,7 +29,9 @@ references:
 
 TODO:
 
-figure out how optimizations work
+; code = compile(program)
+; emulate_riscv(code)
+; optimize
 
 figure out how to compile, not just interpret
 
