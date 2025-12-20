@@ -49,7 +49,6 @@ def transform(module_op: ModuleOp, target: str):
 
     OptimizeAzizPass().apply(ctx, module_op)
     LowerAzizPass().apply(ctx, module_op)  # aziz-dialect to generic mlir ops
-
     CanonicalizePass().apply(ctx, module_op)  # standard canonicalization
     module_op.verify()
 

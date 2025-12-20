@@ -75,23 +75,19 @@ class InlineFunctions(RewritePattern):
 class RemoveUnusedPrivateFunctions(RewritePattern):
     _used_funcs: set[str] | None = None
 
-    def should_remove_op(self, op: aziz.FuncOp) -> bool:
-        if op.sym_visibility != StringAttr("private"):
-            return False
-
-        if self._used_funcs is None:
-            # Get module
-            module = op.parent_op()
-            assert isinstance(module, ModuleOp)
-
-            self._used_funcs = {op.callee.string_value() for op in module.walk() if isinstance(op, aziz.CallOp)}
-
-        return op.sym_name.data not in self._used_funcs
-
     @op_type_rewrite_pattern
     def match_and_rewrite(self, op: aziz.FuncOp, rewriter: PatternRewriter):
-        if self.should_remove_op(op):
+        if self._is_unused(op):
             rewriter.erase_op(op)
+
+    def _is_unused(self, op: aziz.FuncOp) -> bool:
+        if op.sym_visibility != StringAttr("private"):
+            return False
+        if self._used_funcs is None:
+            module = op.parent_op()
+            assert isinstance(module, ModuleOp)
+            self._used_funcs = {op.callee.string_value() for op in module.walk() if isinstance(op, aziz.CallOp)}
+        return op.sym_name.data not in self._used_func
 
 
 class OptimizeAzizPass(ModulePass):
