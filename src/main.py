@@ -15,6 +15,7 @@ from frontend.ir_gen import IRGen
 from frontend.parser import AzizParser
 from interpreter import AzizFunctions
 
+
 parser = argparse.ArgumentParser(description="aziz language")
 parser.add_argument("file", help="source file")
 xor = parser.add_mutually_exclusive_group()
