@@ -148,7 +148,7 @@ if __name__ == "__main__":
         exit(0)
 
     snapshot_before = module_op.clone()
-    transform(ctx, module_op, target=args.target)  # mlir -> faster mlir
+    transform(ctx, module_op, target=args.target)
 
     if args.ast:
         print(dump(module_ast))
