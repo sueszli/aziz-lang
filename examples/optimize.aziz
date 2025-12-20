@@ -1,0 +1,17 @@
+(defun square (x)
+  (* x x))
+
+; inline + constant fold
+(print (square 10))
+
+; constant fold (= 300)
+(print (+ 100 200))
+
+; nested constant fold (= 90)
+(print (* (+ 10 20) 3))
+
+; inline + constant folding (= 1.5^2=2.25)
+(print (square 1.5))
+
+; constant fold
+(print (- 10.5 5.25))
