@@ -49,7 +49,7 @@ def main():
     assert args.file.endswith(".aziz")
     src = Path(args.file).read_text()
 
-    ctx = context()  # not actually used for interpreting
+    ctx = context()  # just used for lowering, not parsing or interpreting
     module_ast = AzizParser(ctx, src).parse_module()  # source -> ast
     module_op = IRGen().ir_gen_module(module_ast)  # ast -> mlir
 
