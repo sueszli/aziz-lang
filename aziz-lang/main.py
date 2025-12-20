@@ -28,26 +28,31 @@ args = parser.parse_args()
 assert args.file.endswith(".aziz")
 src = Path(args.file).read_text()  # read source
 
-module_ast = AzizParser("in_memory", src).parse_module()  # source -> ast
+
+def load_dialects():
+    ctx = Context()
+    ctx.load_dialect(affine.Affine)
+    ctx.load_dialect(arith.Arith)
+    ctx.load_dialect(Builtin)
+    ctx.load_dialect(func.Func)
+    ctx.load_dialect(memref.MemRef)
+    ctx.load_dialect(printf.Printf)
+    ctx.load_dialect(riscv_func.RISCV_Func)
+    ctx.load_dialect(riscv.RISCV)
+    ctx.load_dialect(scf.Scf)
+    ctx.load_dialect(aziz)
+    return ctx
+
+
+ctx = load_dialects()
+
+module_ast = AzizParser(ctx, src).parse_module()  # source -> ast
 if args.ast:
     print(dump(module_ast), "\n")
 
 module_op = IRGen().ir_gen_module(module_ast)  # ast -> mlir
 if args.mlir:
     print(module_op, "\n")
-
-
-ctx = Context()
-ctx.load_dialect(affine.Affine)
-ctx.load_dialect(arith.Arith)
-ctx.load_dialect(Builtin)
-ctx.load_dialect(func.Func)
-ctx.load_dialect(memref.MemRef)
-ctx.load_dialect(printf.Printf)
-ctx.load_dialect(riscv_func.RISCV_Func)
-ctx.load_dialect(riscv.RISCV)
-ctx.load_dialect(scf.Scf)
-ctx.load_dialect(aziz)
 
 
 # code = compile(program)
