@@ -144,13 +144,17 @@ class IRGen:
                 self.symbol_table[arg_name] = arg_val  # bind arguments
 
             # generate body
+            last_val = None
             for expr in func_ast.body:
-                self._ir_gen_expr(expr)
+                last_val = self._ir_gen_expr(expr)
 
             # ensure return
             if not (block.ops and isinstance(block.last_op, ReturnOp)):
-                zero = self.builder.insert(ConstantOp(0)).res
-                self.builder.insert(ReturnOp(zero))
+                if last_val:
+                    self.builder.insert(ReturnOp(last_val))
+                else:
+                    zero = self.builder.insert(ConstantOp(0)).res
+                    self.builder.insert(ReturnOp(zero))
 
             # update return type
             if block.ops and isinstance(block.last_op, ReturnOp):

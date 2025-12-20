@@ -13,7 +13,7 @@
 (print (* 2.5 4.0))
 (print (+ 1.5 2.5))
 
-(print "String with (parens) inside")
+(print "string with (parens) inside")
 (print "(more")
 (print "data)")
 
