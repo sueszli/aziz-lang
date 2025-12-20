@@ -51,9 +51,6 @@ def context() -> Context:
 
 
 def transform(ctx: Context, module_op: ModuleOp, *, target: str):
-    if target == "aziz":
-        return
-
     CanonicalizePass().apply(ctx, module_op)
 
     if target == "aziz-opt":
