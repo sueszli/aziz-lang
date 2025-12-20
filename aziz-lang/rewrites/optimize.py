@@ -95,7 +95,7 @@ class RemoveUnusedPrivateFunctions(RewritePattern):
 
 
 class OptimizeAzizPass(ModulePass):
-    name = "inline-aziz-functions"
+    name = "optimize-aziz"
 
     def apply(self, _: Context, op: ModuleOp) -> None:
         PatternRewriteWalker(InlineFunctions()).rewrite_module(op)
