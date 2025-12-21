@@ -18,9 +18,8 @@ from frontend.parser import AzizParser
 from interpreter import AzizFunctions
 from qemu import map_virtual_to_physical_registers, run_riscv
 from rewrites.lower import LowerAzizPass
-from rewrites.lower_riscv import LowerSelectPass
+from rewrites.lower_riscv import LowerSelectPass, RemoveUnprintableOpsPass
 from rewrites.optimize import OptimizeAzizPass
-from rewrites.remove_printf import RemoveUnprintableOpsPass
 from xdsl.backend.riscv.lowering.convert_arith_to_riscv import ConvertArithToRiscvPass
 from xdsl.backend.riscv.lowering.convert_func_to_riscv_func import ConvertFuncToRiscvFuncPass
 from xdsl.backend.riscv.lowering.convert_memref_to_riscv import ConvertMemRefToRiscvPass
