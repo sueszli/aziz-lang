@@ -33,8 +33,14 @@ def _assemble_and_link(asm_code: str, tmp: Path) -> Path:
     # assembly -> executable elf binary
     (tmp / "link.ld").write_text(LINKER_SCRIPT)
     (tmp / "code.s").write_text(asm_code)
-    subprocess.run(["riscv64-unknown-elf-as", "-o", tmp / "code.o", tmp / "code.s"], check=True, capture_output=True)
-    subprocess.run(["riscv64-unknown-elf-ld", "-T", tmp / "link.ld", "-o", tmp / "code.elf", tmp / "code.o"], check=True, capture_output=True)
+    result = subprocess.run(["riscv64-unknown-elf-as", "-o", tmp / "code.o", tmp / "code.s"], capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"assembly error:\n{result.stderr}")
+        raise subprocess.CalledProcessError(result.returncode, result.args, result.stdout, result.stderr)
+    result = subprocess.run(["riscv64-unknown-elf-ld", "-T", tmp / "link.ld", "-o", tmp / "code.elf", tmp / "code.o"], capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"linking error:\n{result.stderr}")
+        raise subprocess.CalledProcessError(result.returncode, result.args, result.stdout, result.stderr)
     return tmp / "code.elf"
 
 
@@ -44,7 +50,7 @@ def _find_symbol_address(elf_path: Path, symbol_name: str) -> int:
     for line in nm_output.splitlines():
         if symbol_name in line:
             return int(line.split()[0], 16)
-    assert False(f"symbol '{symbol_name}' not found")
+    assert False, f"symbol '{symbol_name}' not found"
 
 
 def _load_elf_segments(elf: ELFFile, emulator: Uc) -> None:
