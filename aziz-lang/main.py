@@ -58,7 +58,7 @@ def transform(module_op: ModuleOp, target: str):
     CanonicalizePass().apply(ctx, module_op)
     module_op.verify()
 
-    if target == "aziz-lowered":
+    if target == "default":
         return
 
     # lower to riscv dialects
@@ -69,7 +69,6 @@ def transform(module_op: ModuleOp, target: str):
     ConvertScfToRiscvPass().apply(ctx, module_op)
     DeadCodeElimination().apply(ctx, module_op)
     ReconcileUnrealizedCastsPass().apply(ctx, module_op)
-
     module_op.verify()
 
     if target == "riscv":
@@ -114,13 +113,14 @@ def transform(module_op: ModuleOp, target: str):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="aziz language")
     parser.add_argument("file", help="source file")
-    parser.add_argument("--target", help="target dialect", default="aziz-lowered")
+    parser.add_argument("--target", help="target dialect", default="default")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--ast", action="store_true", help="print final ir")
     group.add_argument("--mlir", action="store_true", help="print final mlir")
     group.add_argument("--interpret", action="store_true", help="interpret the code")
     args = parser.parse_args()
     assert args.file.endswith(".aziz")
+    assert args.target in ["default", "riscv", "riscv-opt", "riscv-regalloc", "riscv-regalloc-opt", "riscv-lowered"]
     src = Path(args.file).read_text()
 
     print(f"architecture: {platform.machine()}")
