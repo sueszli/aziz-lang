@@ -133,8 +133,8 @@ def main():
         print(dump(module_ast))
         return
 
+    title = lambda s: f"\n\033[90m{'-' * 100}\n{s}\n{'-' * 100}\n\033[0m"
     if args.mlir:
-        title = lambda s: f"\n\033[90m{'-' * 100}\n{s}\n{'-' * 100}\n\033[0m"
         print(title("before transformation"))
         print(original_module_op)
         print(title("after transformation"))
@@ -142,7 +142,6 @@ def main():
         return
 
     if args.asm:
-        title = lambda s: f"\n\033[90m{'-' * 100}\n{s}\n{'-' * 100}\n\033[0m"
         io = StringIO()
         riscv.print_assembly(module_op, io)
         text_section = io.getvalue()
