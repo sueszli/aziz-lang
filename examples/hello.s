@@ -16,9 +16,8 @@ print_loop:
     addi a0, a0, 1          # next character
     j print_loop            # repeat
     
-done:
-    li a0, 0x100000         # a0 = exit syscall address
-    li a1, 0x5555           # a1 = exit code
-    sw a1, 0(a0)            # store exit code to trigger exit
-
-1:  j 1b                    # infinite loop to end program as 
+done:                       # qemu magic to exit
+    li a0, 0x100000
+    li a1, 0x5555
+    sw a1, 0(a0)
+1:  j 1b
