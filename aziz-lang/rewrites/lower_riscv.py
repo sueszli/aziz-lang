@@ -190,7 +190,6 @@ def emit_data_section(module_op: ModuleOp) -> str:
 
 
 def map_virtual_to_physical_registers(asm: str) -> str:
-
     virtual_regs = set(re.findall(r"\bj_\d+\b", asm))
     physical_regs = [f"t{i}" for i in range(7)] + [f"s{i}" for i in range(12)]
     if len(virtual_regs) > len(physical_regs):
