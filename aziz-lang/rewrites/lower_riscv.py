@@ -68,6 +68,59 @@ class LowerSelectPass(ModulePass):
         PatternRewriteWalker(GreedyRewritePatternApplier([SelectOpLowering()])).rewrite_module(op)
 
 
+class LLVMGlobalToDataSectionLowering(RewritePattern):
+    # convert llvm.GlobalOp to module attributes that store the global data
+
+    @op_type_rewrite_pattern
+    def match_and_rewrite(self, op: llvm.GlobalOp, rewriter: PatternRewriter):
+        # find the module
+        module_op = op.parent_op()
+        while module_op is not None and not isinstance(module_op, ModuleOp):
+            module_op = module_op.parent_op()
+        assert module_op is not None, "GlobalOp must be inside a ModuleOp"
+
+        # extract string data from the global
+        sym_name = op.sym_name.data
+        global_type = op.global_type
+        value = op.value
+
+        # store the global info (we'll use this when printing assembly)
+        global_info = {
+            "type": global_type,
+            "value": value,
+            "linkage": op.linkage,
+            "constant": op.constant is not None,  # UnitAttr presence indicates constant
+        }
+
+        # store in the module_op's extra data (not standard MLIR attributes)
+        if not hasattr(module_op, "_riscv_globals"):
+            module_op._riscv_globals = {}
+        module_op._riscv_globals[sym_name] = global_info
+
+        # remove the global op
+        rewriter.erase_op(op, safe_erase=False)
+
+
+class LLVMAddressOfToRISCVLowering(RewritePattern):
+    # convert llvm.AddressOfOp to riscv.LiOp with label reference (will be post-processed to 'la')
+
+    @op_type_rewrite_pattern
+    def match_and_rewrite(self, op: llvm.AddressOfOp, rewriter: PatternRewriter):
+        # get the symbol name
+        global_name = op.global_name.root_reference.data
+
+        # create a riscv.li operation with immediate 0 (placeholder)
+        # we'll store the symbol name in an attribute for later processing
+        reg_type = riscv.IntRegisterType.unallocated()
+        li_op = riscv.LiOp(0, rd=reg_type)
+
+        # store the symbol reference in the op for later conversion to 'la'
+        li_op.attributes["symbol_ref"] = op.global_name.root_reference
+
+        # replace the addressof with li
+        rewriter.replace_op(op, [li_op], [li_op.rd])
+
+
 class RemovePrintfOpLowering(RewritePattern):
     # remove printf operations since they can't be represented in riscv assembly without libc
 
@@ -76,26 +129,10 @@ class RemovePrintfOpLowering(RewritePattern):
         rewriter.erase_op(op, safe_erase=False)
 
 
-class RemoveLLVMAddressOfOpLowering(RewritePattern):
-    # remove llvm addressof operations that reference globals
-
-    @op_type_rewrite_pattern
-    def match_and_rewrite(self, op: llvm.AddressOfOp, rewriter: PatternRewriter):
-        rewriter.erase_op(op, safe_erase=False)
-
-
-class RemoveLLVMGlobalOpLowering(RewritePattern):
-    # remove llvm global definitions (string constants) that can't be represented in riscv assembly
-
-    @op_type_rewrite_pattern
-    def match_and_rewrite(self, op: llvm.GlobalOp, rewriter: PatternRewriter):
-        rewriter.erase_op(op, safe_erase=False)
-
-
 class RemoveUnprintableOpsPass(ModulePass):
     name = "remove-unprintable-ops"
 
     def apply(self, _: Context, op: ModuleOp) -> None:
+        PatternRewriteWalker(GreedyRewritePatternApplier([LLVMGlobalToDataSectionLowering()])).rewrite_module(op)
+        PatternRewriteWalker(GreedyRewritePatternApplier([LLVMAddressOfToRISCVLowering()])).rewrite_module(op)
         PatternRewriteWalker(GreedyRewritePatternApplier([RemovePrintfOpLowering()])).rewrite_module(op)
-        PatternRewriteWalker(GreedyRewritePatternApplier([RemoveLLVMAddressOfOpLowering()])).rewrite_module(op)
-        PatternRewriteWalker(GreedyRewritePatternApplier([RemoveLLVMGlobalOpLowering()])).rewrite_module(op)

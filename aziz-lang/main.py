@@ -116,6 +116,32 @@ def transform(module_op: ModuleOp, target: str):
     assert False, f"unknown target: {target}"
 
 
+def emit_data_section(module_op: ModuleOp) -> str:
+    # convert llvm global strings to .data section in assembly
+    if not hasattr(module_op, "_riscv_globals") or not module_op._riscv_globals:
+        return ""
+
+    lines = [".data"]
+    for sym_name, global_info in module_op._riscv_globals.items():
+        value_attr = global_info["value"]
+        lines.extend([f".globl {sym_name}", f"{sym_name}:"])
+        assert hasattr(value_attr, "data") and hasattr(value_attr.data, "data"), "unsupported global value type"
+
+        # convert byte array to string
+        string_bytes = bytes(value_attr.data.data)
+        try:
+            string_content = string_bytes[: string_bytes.index(0)].decode("utf-8")
+        except (ValueError, UnicodeDecodeError):
+            string_content = string_bytes.decode("utf-8", errors="replace").rstrip("\x00")
+
+        # emit as .string directive
+        escaped = string_content.replace("\\", "\\\\").replace('"', '\\"')
+        lines.append(f'    .string "{escaped}"')
+
+    lines.append("")
+    return "\n".join(lines) + "\n"
+
+
 def main():
     parser = argparse.ArgumentParser(description="aziz language")
     parser.add_argument("file", help="source file")
@@ -147,22 +173,26 @@ def main():
         return
 
     if args.mlir:
-        gray = lambda s: f"\033[90m{s}\033[0m"
-        print(gray(f"{'-' * 100}\nbefore transformation\n{'-' * 100}"))
+        title = lambda s: f"\033[90m{'-' * 100}\n{s}{'-' * 100}\n\033[0m"
+        print(title("before transformation"))
         print(original_module_op)
-        print(gray(f"{'-' * 100}\nafter transformation\n{'-' * 100}"))
+        print(title("after transformation"))
         print(module_op)
         return
 
     if args.asm:
-        gray = lambda s: f"\033[90m{s}\033[0m"
+        title = lambda s: f"\033[90m{'-' * 100}\n{s}{'-' * 100}\n\033[0m"
         io = StringIO()
         riscv.print_assembly(module_op, io)
-        source = io.getvalue()
-        source = map_virtual_to_physical_registers(source)
-        print(gray(f"{'-' * 100}\nriscv assembly\n{'-' * 100}"))
+        text_section = io.getvalue()
+
+        data_section = emit_data_section(module_op)
+        text_section = map_virtual_to_physical_registers(text_section)
+        source = data_section + text_section
+
+        print(title("riscv assembly"))
         print(source)
-        print(gray(f"{'-' * 100}\nemulation result\n{'-' * 100}"))
+        print(title("emulation result"))
         result = run_riscv(source, entry_symbol="main")
         print(f"{result['output']=}")
         print(f"{result['regs']=}")
