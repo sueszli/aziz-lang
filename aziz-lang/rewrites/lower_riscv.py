@@ -1,12 +1,13 @@
 import re
+
 from xdsl.context import Context
 from xdsl.dialects import arith, llvm, printf, riscv
-from xdsl.dialects.builtin import ModuleOp, UnrealizedConversionCastOp, StringAttr, IntegerAttr
+from xdsl.dialects.builtin import IntegerAttr, ModuleOp, StringAttr, UnrealizedConversionCastOp
+from xdsl.ir import Attribute
+from xdsl.irdl import attr_def, base, irdl_op_definition
 from xdsl.passes import ModulePass
 from xdsl.pattern_rewriter import GreedyRewritePatternApplier, PatternRewriter, PatternRewriteWalker, RewritePattern, op_type_rewrite_pattern
 from xdsl.rewriter import InsertPoint
-from xdsl.ir import Attribute
-from xdsl.irdl import irdl_op_definition, attr_def, base
 
 #
 # branching lowering
@@ -155,9 +156,11 @@ class RemoveUnprintableOpsPass(ModulePass):
         PatternRewriteWalker(GreedyRewritePatternApplier([LLVMAddressOfToRISCVLowering()])).rewrite_module(op)
         PatternRewriteWalker(GreedyRewritePatternApplier([RemovePrintfOpLowering()])).rewrite_module(op)
 
-# 
+
+#
 # TODO: BRING THESE ALL INTO PASSES
-# 
+#
+
 
 def emit_data_section(module_op: ModuleOp) -> str:
     globals = [op for op in module_op.walk() if isinstance(op, RISCVGlobalOp)]

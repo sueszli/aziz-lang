@@ -6,7 +6,6 @@
 # ]
 # ///
 
-import re
 import shutil
 import subprocess
 import tempfile
@@ -14,7 +13,7 @@ from pathlib import Path
 
 from elftools.elf.elffile import ELFFile
 from unicorn import UC_ARCH_RISCV, UC_HOOK_CODE, UC_HOOK_MEM_WRITE, UC_MODE_RISCV64, Uc
-from unicorn.riscv_const import UC_RISCV_REG_A0, UC_RISCV_REG_A1, UC_RISCV_REG_A7, UC_RISCV_REG_T0, UC_RISCV_REG_T1, UC_RISCV_REG_T2
+from unicorn.riscv_const import UC_RISCV_REG_A0, UC_RISCV_REG_A1, UC_RISCV_REG_A7, UC_RISCV_REG_MSTATUS, UC_RISCV_REG_SP, UC_RISCV_REG_T0, UC_RISCV_REG_T1, UC_RISCV_REG_T2
 
 MEMORY_BASE_ADDR = 0x10000
 MEMORY_SIZE_BYTES = 0x11000000
@@ -23,7 +22,7 @@ HALT_ADDR = 0x100000
 HALT_MAGIC_VALUE = 0x5555
 SYSCALL_EXIT = 93
 ECALL_INSTRUCTION = b"\x73\x00\x00\x00"
-MAX_INSTRUCTION_COUNT = 100000
+MAX_INSTRUCTION_COUNT = 10_000_000
 LINKER_SCRIPT = """
 SECTIONS {
     . = 0x10000;
@@ -95,12 +94,33 @@ def run_riscv(asm_code: str, entry_symbol: str = "main") -> dict[str, any]:
         entry_addr = _find_symbol_address(elf_path, entry_symbol)
 
         emulator = Uc(UC_ARCH_RISCV, UC_MODE_RISCV64)
+
+        # enable floating-point unit by setting mstatus.FS field
+        # FS field is bits 13-14 of mstatus, set to 0b11 (Dirty) to enable FPU
+        mstatus = emulator.reg_read(UC_RISCV_REG_MSTATUS)
+        mstatus |= 0b11 << 13  # Set FS=Dirty to enable FPU
+        emulator.reg_write(UC_RISCV_REG_MSTATUS, mstatus)
+
         emulator.mem_map(MEMORY_BASE_ADDR, MEMORY_SIZE_BYTES)
         _load_elf_segments(ELFFile(open(elf_path, "rb")), emulator)
 
         output_buffer = []
         _create_execution_hooks(emulator, output_buffer)
-        emulator.emu_start(entry_addr, 0xFFFFFFFF, count=MAX_INSTRUCTION_COUNT)
+
+        # initialize stack pointer to top of memory region minus some space for stack growth
+        # ensure 16-byte alignment as required by RISC-V ABI
+        stack_top = (MEMORY_BASE_ADDR + MEMORY_SIZE_BYTES - 16) & ~0xF
+        emulator.reg_write(UC_RISCV_REG_SP, stack_top)
+
+        # use 0 as end address to run until stopped by hooks or instruction count
+        # see: https://github.com/unicorn-engine/unicorn/issues/1972
+        try:
+            emulator.emu_start(entry_addr, 0, count=MAX_INSTRUCTION_COUNT)
+        except Exception as e:
+            print(f"[ERROR] emulation exception: {e}")
+            print(f"[ERROR] SP = 0x{emulator.reg_read(UC_RISCV_REG_SP):x}")
+            print(f"[ERROR] entry addr = 0x{entry_addr:x}")
+            raise e
 
         reg_map = [("t0", UC_RISCV_REG_T0), ("t1", UC_RISCV_REG_T1), ("t2", UC_RISCV_REG_T2), ("a0", UC_RISCV_REG_A0), ("a1", UC_RISCV_REG_A1), ("a7", UC_RISCV_REG_A7)]
         return {"output": "".join(output_buffer), "regs": {name: emulator.reg_read(reg_id) for name, reg_id in reg_map}}
