@@ -1,7 +1,3 @@
-# 
-# local
-# 
-
 .PHONY: venv
 venv:
 	test -f requirements.txt || (uvx pipreqs . --mode no-pin --encoding utf-8 --ignore .venv && mv requirements.txt requirements.in && uv pip compile requirements.in -o requirements.txt)
@@ -20,20 +16,11 @@ fmt:
 	uvx autoflake --remove-all-unused-imports --recursive --in-place .
 	uvx black --line-length 5000 .
 
-# 
-# docker
-# 
-
-DOCKER_RUN = docker run --rm -v $(PWD):/workspace aziz-lang sh -c
-
-.PHONY: build-image
-build-image:
-	docker build -t aziz-lang .
-
-.PHONY: run
-run: build-image
-	$(DOCKER_RUN) 'uv run aziz-lang/main.py examples/optimize.aziz --mlir'
-
-.PHONY: clean
-clean:
-	docker rmi aziz-lang 2>/dev/null || true
+.PHONY: run-riscv
+run-riscv:
+	@command -v qemu-system-riscv64 >/dev/null || (echo "qemu not installed" && exit 1)
+	@base=$$(basename $(FILE) .s); \
+	riscv64-unknown-elf-as -o $$base.o $(FILE) && \
+	riscv64-unknown-elf-ld -Ttext=0x80000000 -o $$base $$base.o && \
+	qemu-system-riscv64 -machine virt -nographic -bios none -kernel $$base; \
+	rm -f $$base.o $$base

@@ -10,7 +10,9 @@
 ⠀⢠⣿⣿⣿⡿⠀⠀⠀⠀⠀⢿⣿⣿⣷⣤⡄
 ⢀⣾⣿⣿⣿⠁⠀⠀⠀⠀⠀⠈⠿⣿⣿⣿⡇
 
-usage:
+
+make run-riscv FILE=./examples/hello.s
+
 
 ```
 find examples -name "*.aziz"
