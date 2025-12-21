@@ -54,9 +54,8 @@ def context() -> Context:
     return ctx
 
 
-def transform(module_op: ModuleOp, target: str):
+def lower_aziz_mut(module_op: ModuleOp):
     ctx = context()
-
     # optimize (drop unused, inline functions)
     OptimizeAzizPass().apply(ctx, module_op)
 
@@ -68,8 +67,9 @@ def transform(module_op: ModuleOp, target: str):
     CanonicalizePass().apply(ctx, module_op)
     module_op.verify()
 
-    if target == "aziz-lowered":
-        return
+
+def lower_riscv_mut(module_op: ModuleOp):
+    ctx = context()
 
     # lower func, memref, printf, arith, scf to riscv dialects
     LowerSelectPass().apply(ctx, module_op)  # convert arith.select to riscv (not supported by xdsl)
@@ -85,49 +85,28 @@ def transform(module_op: ModuleOp, target: str):
     ReconcileUnrealizedCastsPass().apply(ctx, module_op)
     module_op.verify()
 
-    if target == "riscv":
-        return
-
     # optimizations that don't depend on register allocation
     CanonicalizePass().apply(ctx, module_op)
     RiscvScfLoopRangeFoldingPass().apply(ctx, module_op)  # fold scf loop ranges into riscv operations
     CanonicalizePass().apply(ctx, module_op)
-
     module_op.verify()
-
-    if target == "riscv-opt":
-        return
 
     # assign virtual registers to physical riscv registers (doesnt handle spilling for recursion)
     RISCVAllocateRegistersPass(allow_infinite=True).apply(ctx, module_op)
-
     module_op.verify()
-
-    if target == "riscv-regalloc":
-        return
 
     # optimizations that depend on register allocation (e.g. redundant moves)
     CanonicalizePass().apply(ctx, module_op)
-
     module_op.verify()
-
-    if target == "riscv-regalloc-opt":
-        return
 
     # lower riscv_func to labels and convert structured control flow to branches
     LowerRISCVFunc(insert_exit_syscall=True).apply(ctx, module_op)
     ConvertRiscvScfToRiscvCfPass().apply(ctx, module_op)
 
-    if target == "riscv-lowered":
-        return
-
-    assert False, f"unknown target: {target}"
-
 
 def main():
     parser = argparse.ArgumentParser(description="aziz language")
     parser.add_argument("file", help="source file")
-    parser.add_argument("--target", help="target dialect", default="riscv-lowered")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--ast", action="store_true", help="print final ir")
     group.add_argument("--mlir", action="store_true", help="print final mlir")
@@ -135,7 +114,6 @@ def main():
     group.add_argument("--interpret", action="store_true", help="interpret the code")
     args = parser.parse_args()
     assert args.file.endswith(".aziz")
-    assert args.target in ["default", "aziz-lowered", "scf", "riscv", "riscv-opt", "riscv-regalloc", "riscv-regalloc-opt", "riscv-lowered"]
     src = Path(args.file).read_text()
 
     module_ast = AzizParser(None, src).parse_module()  # source -> ast
@@ -148,7 +126,8 @@ def main():
         return
 
     original_module_op = module_op.clone()
-    transform(module_op, target=args.target)
+    lower_aziz_mut(module_op)
+    lower_riscv_mut(module_op)
 
     if args.ast:
         print(dump(module_ast))
