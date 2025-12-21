@@ -1,11 +1,3 @@
-# /// script
-# requires-python = "==3.14"
-# dependencies = [
-#     "unicorn==2.1.4",
-#     "pyelftools==0.32",
-# ]
-# ///
-
 import shutil
 import subprocess
 import tempfile
