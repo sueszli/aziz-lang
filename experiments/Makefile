@@ -1,4 +1,4 @@
-# run: `make run-riscv FILE=s/hello.s`
+# run: `make run-riscv FILE=hello.s`
 
 .PHONY: run-riscv
 run-riscv:
