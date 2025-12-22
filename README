@@ -5,7 +5,7 @@
 ⠀⠀⠀⠀⠀⠀⣼⣿⣿⣿⣿⣆⠀
 ⠀⠀⠀⠀⠀⣼⣿⣿⣿⣿⣿⣿⡀     a subset of common lisp
 ⠀⠀⠀⠀⣴⣿⣿⣿⠟⣿⣿⣿⣷     implemented using xDSL/MLIR
-⠀⠀⠀⣰⣿⣿⣿⡏⠀⠸⣿⣿⣿⣇    emulated on the ARM64 architecture
+⠀⠀⠀⣰⣿⣿⣿⡏⠀⠸⣿⣿⣿⣇    emulated on the RISC-V architecture
 ⠀⠀⢠⣿⣿⣿⡟⠀⠀⠀⢻⣿⣿⣿⡆
 ⠀⢠⣿⣿⣿⡿⠀⠀⠀⠀⠀⢿⣿⣿⣷⣤⡄
 ⢀⣾⣿⣿⣿⠁⠀⠀⠀⠀⠀⠈⠿⣿⣿⣿⡇
