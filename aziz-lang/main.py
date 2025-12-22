@@ -128,12 +128,13 @@ def main():
     orig2 = module_op.clone()
     lower_riscv_mut(module_op)
 
-    # execute
+    # emulate
     io = StringIO()
     riscv.print_assembly(module_op, io)
     source = io.getvalue()
     result = emulate_riscv(source, entry_symbol="main")
 
+    # print results
     print_block = lambda title, content: print(f"\033[90m{'-' * 100}\n{title}\n{'-' * 100}\033[0m\n\n{content}\n")
     if args.source:
         print_block("source", src)
@@ -143,7 +144,7 @@ def main():
         print_block("before optimization", orig1)
         print_block("after optimization", orig2)
     if args.interpret:
-        print_block("interpreter result", interpreter_result)
+        print_block("interpreter output", interpreter_result)
     if args.asm:
         print_block("riscv assembly", source)
     if args.execute:

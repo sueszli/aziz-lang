@@ -14,34 +14,31 @@ HALT_ADDR = 0x100000
 HALT_MAGIC_VALUE = 0x5555
 SYSCALL_EXIT = 93
 ECALL_INSTRUCTION = b"\x73\x00\x00\x00"
-MAX_INSTRUCTION_COUNT = 10_000_000
-LINKER_SCRIPT = """
-SECTIONS {
-    . = 0x10000;
-    .text : { *(.text*) }
-    .data : { *(.data*) }
-    .rodata : { *(.rodata*) }
-}
-"""
+MAX_INSTRUCTION_COUNT = 1_000_000
 
 
 def _assemble_and_link(asm_code: str, tmp: Path) -> Path:
-    # assembly -> executable elf binary
-    (tmp / "link.ld").write_text(LINKER_SCRIPT)
+    # assembly -> linking -> ELF executable
     (tmp / "code.s").write_text(asm_code)
     result = subprocess.run(["riscv64-unknown-elf-as", "-o", tmp / "code.o", tmp / "code.s"], capture_output=True, text=True)
-    if result.returncode != 0:
-        print(f"assembly error:\n{result.stderr}")
-        raise subprocess.CalledProcessError(result.returncode, result.args, result.stdout, result.stderr)
+    assert result.returncode == 0, f"assembly error:\n{result.returncode=}\n{result.args=}\n{result.stdout=}\n{result.stderr=}"
+
+    linker_script = f"""
+    SECTIONS {{
+        . = {MEMORY_BASE_ADDR:#x};
+        .text : {{ *(.text*) }}
+        .data : {{ *(.data*) }}
+        .rodata : {{ *(.rodata*) }}
+    }}
+    """
+    (tmp / "link.ld").write_text(linker_script)
     result = subprocess.run(["riscv64-unknown-elf-ld", "-T", tmp / "link.ld", "-o", tmp / "code.elf", tmp / "code.o"], capture_output=True, text=True)
-    if result.returncode != 0:
-        print(f"linking error:\n{result.stderr}")
-        raise subprocess.CalledProcessError(result.returncode, result.args, result.stdout, result.stderr)
+    assert result.returncode == 0, f"linking error:\n{result.returncode=}\n{result.args=}\n{result.stdout=}\n{result.stderr=}"
     return tmp / "code.elf"
 
 
 def _find_symbol_address(elf_path: Path, symbol_name: str) -> int:
-    # get mem address of a symbol in ELF (e.g. "main")
+    # locate  mem address of a symbol in ELF (e.g. "main") executable
     nm_output = subprocess.run(["riscv64-unknown-elf-nm", elf_path], capture_output=True, text=True, check=True).stdout
     for line in nm_output.splitlines():
         if symbol_name in line:
@@ -50,7 +47,8 @@ def _find_symbol_address(elf_path: Path, symbol_name: str) -> int:
 
 
 def _load_elf_segments(elf: ELFFile, emulator: Uc) -> None:
-    # copy executable code and data from ELF into emulator memory
+    # load ELF segments into emulator memory
+
     for segment in elf.iter_segments():
         if segment["p_type"] != "PT_LOAD":
             continue
@@ -59,7 +57,7 @@ def _load_elf_segments(elf: ELFFile, emulator: Uc) -> None:
 
 
 def _create_execution_hooks(emulator: Uc, output_buffer: list[str]) -> None:
-    # intercept syscalls and memory-mapped i/o during execution
+    # sets up syscall and memory I/O interception
 
     def code_hook(uc: Uc, addr: int, size_bytes: int, _) -> None:
         # exit syscall
