@@ -44,7 +44,7 @@ class LessThanEqualOpLowering(RewritePattern):
         if isinstance(op.lhs.type, AnyFloat):
             rewriter.replace_op(op, arith.CmpfOp(op.lhs, op.rhs, "ole"))  # ordered less equal
         else:
-            rewriter.replace_op(op, arith.CmpiOp(op.lhs, op.rhs, "sle"))  # signed less equal
+            rewriter.replace_op(op, arith.CmpiOp(op.rhs, op.lhs, "sle"))  # signed less equal
 
 
 class CastIntToFloatOpLowering(RewritePattern):

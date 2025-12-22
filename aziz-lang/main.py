@@ -19,13 +19,12 @@ from frontend.parser import AzizParser
 from interpreter import AzizFunctions
 from qemu import run_riscv
 from rewrites.lower import LowerAzizPass
-from rewrites.lower_riscv import LowerSelectPass, RemoveUnprintableOpsPass, emit_data_section, map_virtual_to_physical_registers
+from rewrites.lower_riscv import AddRecursionSupportPass, CustomLowerScfToRiscvPass, LowerSelectPass, RemoveUnprintableOpsPass, emit_data_section, map_virtual_to_physical_registers
 from rewrites.optimize import OptimizeAzizPass
 from xdsl.backend.riscv.lowering.convert_arith_to_riscv import ConvertArithToRiscvPass
 from xdsl.backend.riscv.lowering.convert_func_to_riscv_func import ConvertFuncToRiscvFuncPass
 from xdsl.backend.riscv.lowering.convert_memref_to_riscv import ConvertMemRefToRiscvPass
 from xdsl.backend.riscv.lowering.convert_riscv_scf_to_riscv_cf import ConvertRiscvScfToRiscvCfPass
-from xdsl.backend.riscv.lowering.convert_scf_to_riscv_scf import ConvertScfToRiscvPass
 from xdsl.context import Context
 from xdsl.dialects import affine, arith, func, printf, riscv, riscv_func, riscv_scf, scf
 from xdsl.dialects.builtin import Builtin, ModuleOp
@@ -36,7 +35,6 @@ from xdsl.transforms.lower_affine import LowerAffinePass
 from xdsl.transforms.lower_riscv_func import LowerRISCVFunc
 from xdsl.transforms.reconcile_unrealized_casts import ReconcileUnrealizedCastsPass
 from xdsl.transforms.riscv_allocate_registers import RISCVAllocateRegistersPass
-from xdsl.transforms.riscv_scf_loop_range_folding import RiscvScfLoopRangeFoldingPass
 
 
 @lru_cache(None)
@@ -77,14 +75,12 @@ def lower_riscv_mut(module_op: ModuleOp):
     module_op.verify()
 
     ConvertFuncToRiscvFuncPass().apply(ctx, module_op)  # func -> riscv_func
+    AddRecursionSupportPass().apply(ctx, module_op)
+    CustomLowerScfToRiscvPass().apply(ctx, module_op)  # replaces ConvertScfToRiscvPass
     ConvertMemRefToRiscvPass().apply(ctx, module_op)  # memref -> riscv load/store
     ConvertArithToRiscvPass().apply(ctx, module_op)  # arith -> riscv
-    ConvertScfToRiscvPass().apply(ctx, module_op)  # scf -> riscv_scf
     DeadCodeElimination().apply(ctx, module_op)  # dce
     ReconcileUnrealizedCastsPass().apply(ctx, module_op)  # cleanup casts
-    CanonicalizePass().apply(ctx, module_op)
-    RiscvScfLoopRangeFoldingPass().apply(ctx, module_op)  # fold scf loop ranges into riscv operations
-    CanonicalizePass().apply(ctx, module_op)
     RISCVAllocateRegistersPass(allow_infinite=True).apply(ctx, module_op)  # virtual -> physical registers (no spilling check)
     CanonicalizePass().apply(ctx, module_op)
     LowerRISCVFunc(insert_exit_syscall=True).apply(ctx, module_op)  # riscv_func -> riscv labels and jumps

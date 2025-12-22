@@ -1,7 +1,7 @@
 import re
 
 from xdsl.context import Context
-from xdsl.dialects import arith, llvm, printf, riscv
+from xdsl.dialects import arith, llvm, printf, riscv, riscv_func, scf
 from xdsl.dialects.builtin import IntegerAttr, ModuleOp, StringAttr, UnrealizedConversionCastOp
 from xdsl.ir import Attribute
 from xdsl.irdl import attr_def, base, irdl_op_definition
@@ -79,6 +79,86 @@ class LowerSelectPass(ModulePass):
 #
 # global data lowering
 #
+
+
+@irdl_op_definition
+class RISCVLabelOp(riscv.RISCVAsmOperation):
+    name = "riscv.label"
+    label = attr_def(riscv.LabelAttr)
+
+    def __init__(self, label: str | riscv.LabelAttr):
+        if isinstance(label, str):
+            label = riscv.LabelAttr(label)
+        super().__init__(attributes={"label": label})
+
+    def assembly_line(self) -> str | None:
+        return f"{self.label.data}:"
+
+
+@irdl_op_definition
+class RISCVAddSpOp(riscv.RISCVAsmOperation):
+    name = "riscv.add_sp"
+    immediate = attr_def(IntegerAttr)
+
+    def __init__(self, immediate: int):
+        super().__init__(attributes={"immediate": IntegerAttr(immediate, 32)})
+
+    def assembly_line(self) -> str | None:
+        return f"addi sp, sp, {self.immediate.value.data}"
+
+
+@irdl_op_definition
+class RISCVSaveRaOp(riscv.RISCVAsmOperation):
+    name = "riscv.save_ra"
+
+    def assembly_line(self) -> str | None:
+        return "sd ra, 0(sp)"
+
+
+@irdl_op_definition
+class RISCVRestoreRaOp(riscv.RISCVAsmOperation):
+    name = "riscv.restore_ra"
+
+    def assembly_line(self) -> str | None:
+        return "ld ra, 0(sp)"
+
+
+class AddRecursionSupportPass(ModulePass):
+    name = "add-recursion-support"
+
+    def apply(self, _: Context, op: ModuleOp) -> None:
+        for func_op in op.walk():
+            if not isinstance(func_op, riscv_func.FuncOp):
+                continue
+            if func_op.sym_name.data in ["main", "_start"]:
+                continue
+
+            # Prologue
+            block = func_op.body.blocks[0]
+            if block.ops:
+                first_op = list(block.ops)[0]
+                add_sp = RISCVAddSpOp(-8)
+                save_ra = RISCVSaveRaOp()
+
+                block.insert_op_before(add_sp, first_op)
+                block.insert_op_before(save_ra, first_op)  # Insert save_ra before first_op (so after add_sp?)
+                # Wait:
+                # Start: [First]
+                # Insert add_sp before First -> [add_sp, First]
+                # Insert save_ra before First -> [add_sp, save_ra, First]
+                # Correct order: add_sp (-8), save_ra (sd).
+
+            # Epilogue
+            for b in func_op.body.blocks:
+                for ret in list(b.ops):
+                    if isinstance(ret, riscv_func.ReturnOp):
+                        # INSERT BEFORE ret
+                        restore_ra = RISCVRestoreRaOp()
+                        rest_sp = RISCVAddSpOp(8)
+
+                        b.insert_op_before(restore_ra, ret)
+                        b.insert_op_before(rest_sp, ret)
+                        # Order: restore_ra, rest_sp, ret. Correct.
 
 
 @irdl_op_definition
@@ -161,6 +241,93 @@ class RemoveUnprintableOpsPass(ModulePass):
 #
 # TODO: BRING THESE ALL INTO PASSES
 #
+
+
+class CustomScfIfToRiscvLowering(RewritePattern):
+    def __init__(self):
+        super().__init__()
+        self.label_counter = 0
+
+    @op_type_rewrite_pattern
+    def match_and_rewrite(self, op: scf.IfOp, rewriter: PatternRewriter):
+        self.label_counter += 1
+        suffix = f"{self.label_counter}"
+        else_label = f"else_{suffix}"
+        cont_label = f"cont_{suffix}"
+
+        reg_type = riscv.IntRegisterType.unallocated()
+        cond_cast = UnrealizedConversionCastOp.create(operands=[op.cond], result_types=[reg_type])
+        rewriter.insert_op(cond_cast, InsertPoint.before(op))
+
+        zero = riscv.GetRegisterOp(riscv.Registers.ZERO)
+        rewriter.insert_op(zero, InsertPoint.before(op))
+
+        # BeqOp args: rs1, rs2, offset
+        beq = riscv.BeqOp(cond_cast.results[0], zero.res, offset=riscv.LabelAttr(else_label))
+        rewriter.insert_op(beq, InsertPoint.before(op))
+
+        res_ptrs = []
+        if op.results:
+            for res in op.results:
+                add_sp = RISCVAddSpOp(-8)
+                rewriter.insert_op(add_sp, InsertPoint.before(op))
+
+                sp = riscv.GetRegisterOp(riscv.Registers.SP)
+                rewriter.insert_op(sp, InsertPoint.before(op))
+
+                res_ptrs.append(sp.res)
+
+        for bop in list(op.true_region.block.ops):
+            if isinstance(bop, scf.YieldOp):
+                for i, val in enumerate(bop.operands):
+                    val_cast = UnrealizedConversionCastOp.create(operands=[val], result_types=[reg_type])
+                    rewriter.insert_op(val_cast, InsertPoint.before(op))
+                    store = riscv.SwOp(res_ptrs[i], val_cast.results[0], 0)
+                    rewriter.insert_op(store, InsertPoint.before(op))
+            else:
+                bop.detach()
+                rewriter.insert_op(bop, InsertPoint.before(op))
+
+        j = riscv.JOp(riscv.LabelAttr(cont_label))
+        rewriter.insert_op(j, InsertPoint.before(op))
+
+        rewriter.insert_op(RISCVLabelOp(else_label), InsertPoint.before(op))
+
+        if op.false_region.block:
+            for bop in list(op.false_region.block.ops):
+                if isinstance(bop, scf.YieldOp):
+                    for i, val in enumerate(bop.operands):
+                        val_cast = UnrealizedConversionCastOp.create(operands=[val], result_types=[reg_type])
+                        rewriter.insert_op(val_cast, InsertPoint.before(op))
+                        store = riscv.SwOp(res_ptrs[i], val_cast.results[0], 0)
+                        rewriter.insert_op(store, InsertPoint.before(op))
+                else:
+                    bop.detach()
+                    rewriter.insert_op(bop, InsertPoint.before(op))
+
+        rewriter.insert_op(RISCVLabelOp(cont_label), InsertPoint.before(op))
+
+        final_results = []
+        for i, m in enumerate(res_ptrs):
+            load = riscv.LwOp(m, 0, rd=reg_type)
+            rewriter.insert_op(load, InsertPoint.before(op))
+
+            res_cast = UnrealizedConversionCastOp.create(operands=[load.rd], result_types=[op.results[i].type])
+            rewriter.insert_op(res_cast, InsertPoint.before(op))
+            final_results.append(res_cast.results[0])
+
+            # Restore SP
+            add_sp = RISCVAddSpOp(8)
+            rewriter.insert_op(add_sp, InsertPoint.before(op))
+
+        rewriter.replace_op(op, [], final_results)
+
+
+class CustomLowerScfToRiscvPass(ModulePass):
+    name = "custom-lower-scf-to-riscv"
+
+    def apply(self, _: Context, op: ModuleOp) -> None:
+        PatternRewriteWalker(CustomScfIfToRiscvLowering()).rewrite_module(op)
 
 
 def emit_data_section(module_op: ModuleOp) -> str:
