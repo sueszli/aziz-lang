@@ -131,8 +131,8 @@ def main():
     # execute
     io = StringIO()
     riscv.print_assembly(module_op, io)
-    source = io.getvalue()  # riscv mlir -> riscv assembly
-    result = emulate_riscv(source, entry_symbol="main")  # riscv assembly -> emulation result
+    source = io.getvalue()
+    result = emulate_riscv(source, entry_symbol="main")
 
     print_block = lambda title, content: print(f"\033[90m{'-' * 100}\n{title}\n{'-' * 100}\033[0m\n\n{content}\n")
     if args.source:
