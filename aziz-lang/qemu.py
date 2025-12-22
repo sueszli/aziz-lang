@@ -42,38 +42,34 @@ def _find_symbol_address(elf_path: Path, symbol_name: str) -> int:
     # locate mem address of a symbol in ELF (e.g. "main") executable
     nm_output = subprocess.run(["riscv64-unknown-elf-nm", elf_path], capture_output=True, text=True, check=True).stdout
     assert nm_output
-    for line in nm_output.splitlines():
-        if symbol_name in line:
-            return int(line.split()[0], 16)
-    assert False, f"symbol '{symbol_name}' not found"
+    nm_lines = nm_output.splitlines()
+    parse_hex_addr = lambda line: int(line.split()[0], 16)
+    return next(parse_hex_addr(line) for line in nm_lines if symbol_name in line)
 
 
 def _load_elf_segments(elf: ELFFile, emulator: Uc) -> None:
     # load ELF segments into emulator memory
-
-    for segment in elf.iter_segments():
-        if segment["p_type"] != "PT_LOAD":
-            continue
-        if segment_data := segment.data():
-            emulator.mem_write(segment["p_vaddr"], segment_data)
+    loadable_segments = [seg for seg in elf.iter_segments() if seg["p_type"] == "PT_LOAD" and seg.data()]
+    for seg in loadable_segments:
+        vaddr, data = (seg["p_vaddr"], seg.data())
+        emulator.mem_write(vaddr, data)
 
 
 def _create_execution_hooks(emulator: Uc, output_buffer: list[str]) -> None:
-    # sets up syscall and memory I/O interception
+    # sets up exit syscall and memory i/o interception
 
     def code_hook(uc: Uc, addr: int, size_bytes: int, _) -> None:
-        # exit syscall
-        if uc.mem_read(addr, 4) != ECALL_INSTRUCTION:
-            return
-        if uc.reg_read(UC_RISCV_REG_A7) == SYSCALL_EXIT:
+        is_exit_syscall = (uc.mem_read(addr, 4) == ECALL_INSTRUCTION) and (uc.reg_read(UC_RISCV_REG_A7) == SYSCALL_EXIT)
+        if is_exit_syscall:
             uc.emu_stop()
 
     def mem_write_hook(uc: Uc, _, addr: int, size_bytes: int, value: int, __) -> None:
-        if addr == STDOUT_ADDR:
-            # map writes to STDOUT_ADDR to console output
+        is_stdout = addr == STDOUT_ADDR
+        is_halt = addr == HALT_ADDR and value == HALT_MAGIC_VALUE
+        if is_stdout:
             output_buffer.append(chr(value & 0xFF))
-        elif addr == HALT_ADDR and value == HALT_MAGIC_VALUE:
-            # map writes of HALT_MAGIC_VALUE to HALT_ADDR to emulator stop
+            return
+        if is_halt:
             uc.emu_stop()
 
     emulator.hook_add(UC_HOOK_CODE, code_hook)
@@ -89,8 +85,7 @@ def emulate_riscv(asm_code: str, entry_symbol: str = "main") -> str:
 
         emulator = Uc(UC_ARCH_RISCV, UC_MODE_RISCV64)
 
-        # enable fpu: set mstatus.fs (bits 13-14) to 0b11="dirty" state
-        # without this, floating-point instructions like fld/fsd cause cpu exceptions
+        # enable floating-point instructions
         mstatus = emulator.reg_read(UC_RISCV_REG_MSTATUS)
         mstatus |= 0b11 << 13
         emulator.reg_write(UC_RISCV_REG_MSTATUS, mstatus)
@@ -116,6 +111,16 @@ def emulate_riscv(asm_code: str, entry_symbol: str = "main") -> str:
             print(f"[ERROR] Entry addr = 0x{entry_addr:x}")
             raise
 
-        reg_map = [("t0", UC_RISCV_REG_T0), ("t1", UC_RISCV_REG_T1), ("t2", UC_RISCV_REG_T2), ("a0", UC_RISCV_REG_A0), ("a1", UC_RISCV_REG_A1), ("a7", UC_RISCV_REG_A7)]
-        result = {"output": "".join(output_buffer), "regs": {name: emulator.reg_read(reg_id) for name, reg_id in reg_map}}
+        reg_map = [
+            ("t0", UC_RISCV_REG_T0),
+            ("t1", UC_RISCV_REG_T1),
+            ("t2", UC_RISCV_REG_T2),
+            ("a0", UC_RISCV_REG_A0),
+            ("a1", UC_RISCV_REG_A1),
+            ("a7", UC_RISCV_REG_A7),
+        ]
+        result = {
+            "output": "".join(output_buffer),
+            "regs": {name: emulator.reg_read(reg_id) for name, reg_id in reg_map},
+        }
         return result["output"]
