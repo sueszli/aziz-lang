@@ -71,36 +71,17 @@ class IfOpLowering(RewritePattern):
         wider_than_bool = isinstance(cond.type, IntegerType) and cond.type.width.data != 1
         if wider_than_bool:
             zero = arith.ConstantOp(IntegerAttr(0, cond.type))
-            rewriter.insert_op(zero, InsertPoint.before(rewriter.current_operation))
+            rewriter.insert_op(zero, InsertPoint.before(op))
             cmp = arith.CmpiOp(cond, zero.result, "ne")  # condition != 0
-            rewriter.insert_op(cmp, InsertPoint.before(rewriter.current_operation))
+            rewriter.insert_op(cmp, InsertPoint.before(op))
             cond = cmp.result
 
-        # inline both branches before the if op (they compute the values)
-        then_block = op.then_region.block
-        else_block = op.else_region.block
+        # create scf.if which preserves control flow (only executing the taken branch)
+        then_region = rewriter.move_region_contents_to_new_regions(op.then_region)
+        else_region = rewriter.move_region_contents_to_new_regions(op.else_region)
 
-        # get the yield values from each branch
-        then_yield = then_block.last_op
-        else_yield = else_block.last_op
-        assert isinstance(then_yield, aziz.YieldOp)
-        assert isinstance(else_yield, aziz.YieldOp)
-
-        # inline then branch ops (except yield)
-        for bop in list(then_block.ops)[:-1]:
-            bop.detach()
-            rewriter.insert_op(bop, InsertPoint.before(op))
-        then_value = then_yield.input
-
-        # inline else branch ops (except yield)
-        for bop in list(else_block.ops)[:-1]:
-            bop.detach()
-            rewriter.insert_op(bop, InsertPoint.before(op))
-        else_value = else_yield.input
-
-        # use arith.select to pick between the two values
-        select = arith.SelectOp(cond, then_value, else_value)
-        rewriter.replace_op(op, select)
+        new_op = scf.IfOp(cond, [r.type for r in op.results], then_region, else_region)
+        rewriter.replace_op(op, new_op)
 
 
 #

@@ -27,7 +27,7 @@ from xdsl.backend.riscv.lowering.convert_memref_to_riscv import ConvertMemRefToR
 from xdsl.backend.riscv.lowering.convert_riscv_scf_to_riscv_cf import ConvertRiscvScfToRiscvCfPass
 from xdsl.backend.riscv.lowering.convert_scf_to_riscv_scf import ConvertScfToRiscvPass
 from xdsl.context import Context
-from xdsl.dialects import affine, arith, func, printf, riscv, riscv_func, scf
+from xdsl.dialects import affine, arith, func, printf, riscv, riscv_func, riscv_scf, scf
 from xdsl.dialects.builtin import Builtin, ModuleOp
 from xdsl.interpreter import Interpreter
 from xdsl.transforms.canonicalize import CanonicalizePass
@@ -49,6 +49,7 @@ def context() -> Context:
     ctx.load_dialect(func.Func)
     ctx.load_dialect(printf.Printf)
     ctx.load_dialect(riscv_func.RISCV_Func)
+    ctx.load_dialect(riscv_scf.RISCV_Scf)
     ctx.load_dialect(riscv.RISCV)
     ctx.load_dialect(scf.Scf)
     return ctx
