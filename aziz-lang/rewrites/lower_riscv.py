@@ -8,31 +8,6 @@ from xdsl.pattern_rewriter import PatternRewriter, PatternRewriteWalker, Rewrite
 from xdsl.rewriter import InsertPoint
 
 #
-# assembly ops
-#
-
-
-@irdl_op_definition
-class RISCVDirectiveOp(riscv.RISCVAsmOperation):
-    name = "riscv.directive"
-    directive = attr_def(StringAttr)
-    value = attr_def(StringAttr)
-
-    def __init__(self, directive: str, value: str = ""):
-        super().__init__(
-            attributes={
-                "directive": StringAttr(directive),
-                "value": StringAttr(value),
-            }
-        )
-
-    def assembly_line(self) -> str | None:
-        if self.value.data:
-            return f"{self.directive.data} {self.value.data}"
-        return self.directive.data
-
-
-#
 # branching lowering
 #
 
@@ -100,8 +75,110 @@ class LowerSelectPass(ModulePass):
 
 
 #
+# drop unprintable ops
+#
+
+
+@irdl_op_definition
+class RISCVGlobalOp(riscv.RISCVAsmOperation):
+    """
+    Represents a global data symbol in the .data section.
+    This operation holds global data that will be emitted in assembly.
+    """
+
+    name = "riscv.global"
+
+    sym_name = attr_def(StringAttr)
+    value = attr_def(base(Attribute))  # Store the llvm dense array
+    is_constant = attr_def(base(Attribute))  # Store a boolean indicator
+
+    def __init__(self, sym_name: str | StringAttr, value: Attribute, is_constant: bool = True):
+        if isinstance(sym_name, str):
+            sym_name = StringAttr(sym_name)
+
+        constant_attr = IntegerAttr(1 if is_constant else 0, 1)
+
+        super().__init__(
+            attributes={
+                "sym_name": sym_name,
+                "value": value,
+                "is_constant": constant_attr,
+            }
+        )
+
+    def assembly_line(self) -> str | None:
+        # This will be handled by emit_data_section walking the IR
+        return None
+
+
+class LLVMGlobalToRISCVGlobalLowering(RewritePattern):
+    """Convert llvm.GlobalOp to riscv.global"""
+
+    @op_type_rewrite_pattern
+    def match_and_rewrite(self, op: llvm.GlobalOp, rewriter: PatternRewriter):
+        sym_name = op.sym_name.data
+        value = op.value
+        is_constant = op.constant is not None
+
+        # Create a RISCV global operation
+        global_op = RISCVGlobalOp(sym_name, value, is_constant)
+        rewriter.insert_op(global_op, InsertPoint.at_start(op.parent_block()))
+
+        # Remove the LLVM global
+        rewriter.erase_op(op, safe_erase=False)
+
+
+class LLVMAddressOfToRISCVLowering(RewritePattern):
+    """Convert llvm.AddressOfOp to riscv.li with a label"""
+
+    @op_type_rewrite_pattern
+    def match_and_rewrite(self, op: llvm.AddressOfOp, rewriter: PatternRewriter):
+        global_name = op.global_name.root_reference.data
+        reg_type = riscv.IntRegisterType.unallocated()
+        label = riscv.LabelAttr(global_name)
+        li_op = riscv.LiOp(label, rd=reg_type)
+        rewriter.replace_op(op, [li_op], [li_op.rd])
+
+
+class RemovePrintfOpLowering(RewritePattern):
+    @op_type_rewrite_pattern
+    def match_and_rewrite(self, op: printf.PrintFormatOp, rewriter: PatternRewriter):
+        rewriter.erase_op(op, safe_erase=False)
+
+
+# bring back printf, write some util function in assembly
+class RemoveUnprintableOpsPass(ModulePass):
+    name = "remove-unprintable-ops"
+
+    def apply(self, _: Context, op: ModuleOp) -> None:
+        PatternRewriteWalker(LLVMGlobalToRISCVGlobalLowering()).rewrite_module(op)
+        PatternRewriteWalker(LLVMAddressOfToRISCVLowering()).rewrite_module(op)
+        PatternRewriteWalker(RemovePrintfOpLowering()).rewrite_module(op)
+
+
+#
 # global data lowering
 #
+
+
+@irdl_op_definition
+class RISCVDirectiveOp(riscv.RISCVAsmOperation):
+    name = "riscv.directive"
+    directive = attr_def(StringAttr)
+    value = attr_def(StringAttr)
+
+    def __init__(self, directive: str, value: str = ""):
+        super().__init__(
+            attributes={
+                "directive": StringAttr(directive),
+                "value": StringAttr(value),
+            }
+        )
+
+    def assembly_line(self) -> str | None:
+        if self.value.data:
+            return f"{self.directive.data} {self.value.data}"
+        return self.directive.data
 
 
 @irdl_op_definition
@@ -182,83 +259,6 @@ class AddRecursionSupportPass(ModulePass):
                         b.insert_op_before(restore_ra, ret)
                         b.insert_op_before(rest_sp, ret)
                         # Order: restore_ra, rest_sp, ret. Correct.
-
-
-@irdl_op_definition
-class RISCVGlobalOp(riscv.RISCVAsmOperation):
-    """
-    Represents a global data symbol in the .data section.
-    This operation holds global data that will be emitted in assembly.
-    """
-
-    name = "riscv.global"
-
-    sym_name = attr_def(StringAttr)
-    value = attr_def(base(Attribute))  # Store the llvm dense array
-    is_constant = attr_def(base(Attribute))  # Store a boolean indicator
-
-    def __init__(self, sym_name: str | StringAttr, value: Attribute, is_constant: bool = True):
-        if isinstance(sym_name, str):
-            sym_name = StringAttr(sym_name)
-
-        constant_attr = IntegerAttr(1 if is_constant else 0, 1)
-
-        super().__init__(
-            attributes={
-                "sym_name": sym_name,
-                "value": value,
-                "is_constant": constant_attr,
-            }
-        )
-
-    def assembly_line(self) -> str | None:
-        # This will be handled by emit_data_section walking the IR
-        return None
-
-
-class LLVMGlobalToRISCVGlobalLowering(RewritePattern):
-    """Convert llvm.GlobalOp to riscv.global"""
-
-    @op_type_rewrite_pattern
-    def match_and_rewrite(self, op: llvm.GlobalOp, rewriter: PatternRewriter):
-        sym_name = op.sym_name.data
-        value = op.value
-        is_constant = op.constant is not None
-
-        # Create a RISCV global operation
-        global_op = RISCVGlobalOp(sym_name, value, is_constant)
-        rewriter.insert_op(global_op, InsertPoint.at_start(op.parent_block()))
-
-        # Remove the LLVM global
-        rewriter.erase_op(op, safe_erase=False)
-
-
-class LLVMAddressOfToRISCVLowering(RewritePattern):
-    """Convert llvm.AddressOfOp to riscv.li with a label"""
-
-    @op_type_rewrite_pattern
-    def match_and_rewrite(self, op: llvm.AddressOfOp, rewriter: PatternRewriter):
-        global_name = op.global_name.root_reference.data
-        reg_type = riscv.IntRegisterType.unallocated()
-        label = riscv.LabelAttr(global_name)
-        li_op = riscv.LiOp(label, rd=reg_type)
-        rewriter.replace_op(op, [li_op], [li_op.rd])
-
-
-class RemovePrintfOpLowering(RewritePattern):
-    @op_type_rewrite_pattern
-    def match_and_rewrite(self, op: printf.PrintFormatOp, rewriter: PatternRewriter):
-        rewriter.erase_op(op, safe_erase=False)
-
-
-# bring back printf, write some util function in assembly
-class RemoveUnprintableOpsPass(ModulePass):
-    name = "remove-unprintable-ops"
-
-    def apply(self, _: Context, op: ModuleOp) -> None:
-        PatternRewriteWalker(LLVMGlobalToRISCVGlobalLowering()).rewrite_module(op)
-        PatternRewriteWalker(LLVMAddressOfToRISCVLowering()).rewrite_module(op)
-        PatternRewriteWalker(RemovePrintfOpLowering()).rewrite_module(op)
 
 
 class CustomScfIfToRiscvLowering(RewritePattern):
@@ -395,6 +395,11 @@ class EmitDataSectionPass(ModulePass):
                 text_directive = RISCVDirectiveOp(".text")
                 op.body.blocks[0].insert_op_before(text_directive, oper)
                 break
+
+
+#
+# register mapping
+#
 
 
 class MapToPhysicalRegistersPass(ModulePass):
