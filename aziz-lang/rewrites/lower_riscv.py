@@ -89,8 +89,8 @@ class RISCVGlobalOp(riscv.RISCVAsmOperation):
     name = "riscv.global"
 
     sym_name = attr_def(StringAttr)
-    value = attr_def(base(Attribute))  # Store the llvm dense array
-    is_constant = attr_def(base(Attribute))  # Store a boolean indicator
+    value = attr_def(base(Attribute))  # store the llvm dense array
+    is_constant = attr_def(base(Attribute))  # store a boolean indicator
 
     def __init__(self, sym_name: str | StringAttr, value: Attribute, is_constant: bool = True):
         if isinstance(sym_name, str):
@@ -98,13 +98,7 @@ class RISCVGlobalOp(riscv.RISCVAsmOperation):
 
         constant_attr = IntegerAttr(1 if is_constant else 0, 1)
 
-        super().__init__(
-            attributes={
-                "sym_name": sym_name,
-                "value": value,
-                "is_constant": constant_attr,
-            }
-        )
+        super().__init__(attributes={"sym_name": sym_name, "value": value, "is_constant": constant_attr})
 
     def assembly_line(self) -> str | None:
         # This will be handled by emit_data_section walking the IR
