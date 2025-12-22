@@ -72,7 +72,7 @@ def lower_riscv_mut(module_op: ModuleOp):
     ctx = context()
 
     LowerSelectPass().apply(ctx, module_op)  # arith.select missing from xdsl lib
-    RemoveUnprintableOpsPass().apply(ctx, module_op)
+    RemoveUnprintableOpsPass().apply(ctx, module_op)  # handle llvm.global and llvm.address_of for strings
     module_op.verify()
 
     ConvertFuncToRiscvFuncPass().apply(ctx, module_op)  # func -> riscv_func
