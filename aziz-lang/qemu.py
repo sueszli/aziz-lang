@@ -7,14 +7,14 @@ from elftools.elf.elffile import ELFFile
 from unicorn import UC_ARCH_RISCV, UC_HOOK_CODE, UC_HOOK_MEM_WRITE, UC_MODE_RISCV64, Uc
 from unicorn.riscv_const import UC_RISCV_REG_A0, UC_RISCV_REG_A1, UC_RISCV_REG_A7, UC_RISCV_REG_MSTATUS, UC_RISCV_REG_SP, UC_RISCV_REG_T0, UC_RISCV_REG_T1, UC_RISCV_REG_T2
 
-MEMORY_BASE_ADDR = 0x10000
-MEMORY_SIZE_BYTES = 0x11000000
+MEMORY_BASE_ADDR = 0x10000  # offset for unicorn engine's address space
+MEMORY_SIZE_BYTES = 0x11000000  # 272 MB total virtual memory region in emulated program
 STDOUT_ADDR = 0x10000000
 HALT_ADDR = 0x100000
 HALT_MAGIC_VALUE = 0x5555
-SYSCALL_EXIT = 93
+SYSCALL_EXIT = 93  # id for exit syscall in RISC-V linux ABI
 ECALL_INSTRUCTION = b"\x73\x00\x00\x00"
-MAX_INSTRUCTION_COUNT = 1_000_000
+MAX_INSTRUCTION_COUNT = 1_000_000  # livelock prevention
 
 
 def _assemble_and_link(asm_code: str, tmp: Path) -> Path:
