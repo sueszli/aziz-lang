@@ -1,4 +1,5 @@
 from dialects import aziz
+from rewrites.optimize import InlineFunctions, RemoveUnusedPrivateFunctions
 from xdsl.context import Context
 from xdsl.dialects.builtin import ModuleOp, StringAttr
 from xdsl.passes import ModulePass
@@ -29,7 +30,7 @@ class InlineFunctions(RewritePattern):
 
         # just inline one-liner functions for simplicity
         impl_body = callable_interface.get_callable_region(callee)
-        is_one_liner = len(impl_body.blocks) == 1
+        is_one_liner = len(impl_body.blocks) == 1  # just inline on
         if not is_one_liner:
             return
 

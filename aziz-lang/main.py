@@ -56,10 +56,10 @@ def context() -> Context:
 
 def lower_aziz_mut(module_op: ModuleOp):
     ctx = context()
-    # optimize (drop unused, inline functions)
+    # drop unused functions, inline one-liner functions
     OptimizeAzizPass().apply(ctx, module_op)
 
-    # lower to arith, func, llvm, printf, scf
+    # lower to arith, func, printf, scf, llvm.global for strings
     LowerAzizPass().apply(ctx, module_op)
     LowerAffinePass().apply(ctx, module_op)
 
@@ -135,16 +135,17 @@ def main():
         interpreter.call_op("main", ())
         return
 
-    original_module_op = module_op.clone()
+    orig = module_op.clone()
     lower_aziz_mut(module_op)
-    lower_riscv_mut(module_op)
 
     if args.mlir:
         print(gray("before transformation"))
-        print(original_module_op)
+        print(orig)
         print(gray("after transformation"))
         print(module_op)
         return
+
+    lower_riscv_mut(module_op)
 
     if args.asm:
         io = StringIO()
