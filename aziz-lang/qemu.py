@@ -18,11 +18,12 @@ MAX_INSTRUCTION_COUNT = 1_000_000  # livelock prevention
 
 
 def _assemble_and_link(asm_code: str, tmp: Path) -> Path:
-    # assembly -> linking -> ELF executable
+    # assembly -> linking
     (tmp / "code.s").write_text(asm_code)
     result = subprocess.run(["riscv64-unknown-elf-as", "-o", tmp / "code.o", tmp / "code.s"], capture_output=True, text=True)
     assert result.returncode == 0, f"assembly error:\n{result.returncode=}\n{result.args=}\n{result.stdout=}\n{result.stderr=}"
 
+    # linking -> ELF executable
     linker_script = f"""
     SECTIONS {{
         . = {MEMORY_BASE_ADDR:#x};
@@ -40,6 +41,7 @@ def _assemble_and_link(asm_code: str, tmp: Path) -> Path:
 def _find_symbol_address(elf_path: Path, symbol_name: str) -> int:
     # locate  mem address of a symbol in ELF (e.g. "main") executable
     nm_output = subprocess.run(["riscv64-unknown-elf-nm", elf_path], capture_output=True, text=True, check=True).stdout
+    assert nm_output
     for line in nm_output.splitlines():
         if symbol_name in line:
             return int(line.split()[0], 16)
