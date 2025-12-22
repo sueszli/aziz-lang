@@ -74,68 +74,6 @@ class LowerSelectPass(ModulePass):
         PatternRewriteWalker(SelectOpLowering()).rewrite_module(op)
 
 
-class FixArithCmpiSle(RewritePattern):
-    """
-    Fix xDSL bug where arith.cmpi sle/ule are lowered incorrectly.
-    xDSL lowers `lhs <= rhs` as `!(lhs < rhs)` which is `lhs >= rhs`.
-    We manually lower to RISC-V: `lhs <= rhs` = `!(rhs < lhs)` = `!(lhs > rhs)`
-    """
-
-    @op_type_rewrite_pattern
-    def match_and_rewrite(self, op: arith.CmpiOp, rewriter: PatternRewriter):
-        if op.predicate.value.data == 3:  # sle (signed less than or equal)
-            # lhs <= rhs = !(rhs < lhs)
-            # Cast operands to RISC-V registers
-            reg_type = riscv.IntRegisterType.unallocated()
-            lhs_cast = UnrealizedConversionCastOp.create(operands=[op.lhs], result_types=[reg_type])
-            rhs_cast = UnrealizedConversionCastOp.create(operands=[op.rhs], result_types=[reg_type])
-            rewriter.insert_op(lhs_cast, InsertPoint.before(op))
-            rewriter.insert_op(rhs_cast, InsertPoint.before(op))
-
-            # slt rhs, lhs (computes rhs < lhs, i.e., lhs > rhs)
-            slt = riscv.SltOp(rhs_cast.results[0], lhs_cast.results[0], rd=reg_type)
-            rewriter.insert_op(slt, InsertPoint.before(op))
-
-            # xori 1 (inverts: !(lhs > rhs) = lhs <= rhs)
-            xori = riscv.XoriOp(slt.rd, 1, rd=reg_type)
-            rewriter.insert_op(xori, InsertPoint.before(op))
-
-            # Cast result back
-            result_cast = UnrealizedConversionCastOp.create(operands=[xori.rd], result_types=[op.result.type])
-            rewriter.insert_op(result_cast, InsertPoint.before(op))
-
-            rewriter.replace_op(op, [], [result_cast.results[0]])
-
-        elif op.predicate.value.data == 5:  # ule (unsigned less than or equal)
-            # lhs <= rhs = !(rhs < lhs)
-            reg_type = riscv.IntRegisterType.unallocated()
-            lhs_cast = UnrealizedConversionCastOp.create(operands=[op.lhs], result_types=[reg_type])
-            rhs_cast = UnrealizedConversionCastOp.create(operands=[op.rhs], result_types=[reg_type])
-            rewriter.insert_op(lhs_cast, InsertPoint.before(op))
-            rewriter.insert_op(rhs_cast, InsertPoint.before(op))
-
-            # sltu rhs, lhs (computes rhs < lhs, i.e., lhs > rhs)
-            sltu = riscv.SltuOp(rhs_cast.results[0], lhs_cast.results[0], rd=reg_type)
-            rewriter.insert_op(sltu, InsertPoint.before(op))
-
-            # xori 1 (inverts: !(lhs > rhs) = lhs <= rhs)
-            xori = riscv.XoriOp(sltu.rd, 1, rd=reg_type)
-            rewriter.insert_op(xori, InsertPoint.before(op))
-
-            # Cast result back
-            result_cast = UnrealizedConversionCastOp.create(operands=[xori.rd], result_types=[op.result.type])
-            rewriter.insert_op(result_cast, InsertPoint.before(op))
-
-            rewriter.replace_op(op, [], [result_cast.results[0]])
-
-
-class FixArithCmpiSlePass(ModulePass):
-    name = "fix-arith-cmpi-sle"
-
-    def apply(self, _: Context, op: ModuleOp) -> None:
-        PatternRewriteWalker(FixArithCmpiSle()).rewrite_module(op)
-
-
 #
 # drop unprintable ops
 #
