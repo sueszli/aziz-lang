@@ -74,6 +74,68 @@ class LowerSelectPass(ModulePass):
         PatternRewriteWalker(SelectOpLowering()).rewrite_module(op)
 
 
+class FixArithCmpiSle(RewritePattern):
+    """
+    Fix xDSL bug where arith.cmpi sle/ule are lowered incorrectly.
+    xDSL lowers `lhs <= rhs` as `!(lhs < rhs)` which is `lhs >= rhs`.
+    We manually lower to RISC-V: `lhs <= rhs` = `!(rhs < lhs)` = `!(lhs > rhs)`
+    """
+
+    @op_type_rewrite_pattern
+    def match_and_rewrite(self, op: arith.CmpiOp, rewriter: PatternRewriter):
+        if op.predicate.value.data == 3:  # sle (signed less than or equal)
+            # lhs <= rhs = !(rhs < lhs)
+            # Cast operands to RISC-V registers
+            reg_type = riscv.IntRegisterType.unallocated()
+            lhs_cast = UnrealizedConversionCastOp.create(operands=[op.lhs], result_types=[reg_type])
+            rhs_cast = UnrealizedConversionCastOp.create(operands=[op.rhs], result_types=[reg_type])
+            rewriter.insert_op(lhs_cast, InsertPoint.before(op))
+            rewriter.insert_op(rhs_cast, InsertPoint.before(op))
+
+            # slt rhs, lhs (computes rhs < lhs, i.e., lhs > rhs)
+            slt = riscv.SltOp(rhs_cast.results[0], lhs_cast.results[0], rd=reg_type)
+            rewriter.insert_op(slt, InsertPoint.before(op))
+
+            # xori 1 (inverts: !(lhs > rhs) = lhs <= rhs)
+            xori = riscv.XoriOp(slt.rd, 1, rd=reg_type)
+            rewriter.insert_op(xori, InsertPoint.before(op))
+
+            # Cast result back
+            result_cast = UnrealizedConversionCastOp.create(operands=[xori.rd], result_types=[op.result.type])
+            rewriter.insert_op(result_cast, InsertPoint.before(op))
+
+            rewriter.replace_op(op, [], [result_cast.results[0]])
+
+        elif op.predicate.value.data == 5:  # ule (unsigned less than or equal)
+            # lhs <= rhs = !(rhs < lhs)
+            reg_type = riscv.IntRegisterType.unallocated()
+            lhs_cast = UnrealizedConversionCastOp.create(operands=[op.lhs], result_types=[reg_type])
+            rhs_cast = UnrealizedConversionCastOp.create(operands=[op.rhs], result_types=[reg_type])
+            rewriter.insert_op(lhs_cast, InsertPoint.before(op))
+            rewriter.insert_op(rhs_cast, InsertPoint.before(op))
+
+            # sltu rhs, lhs (computes rhs < lhs, i.e., lhs > rhs)
+            sltu = riscv.SltuOp(rhs_cast.results[0], lhs_cast.results[0], rd=reg_type)
+            rewriter.insert_op(sltu, InsertPoint.before(op))
+
+            # xori 1 (inverts: !(lhs > rhs) = lhs <= rhs)
+            xori = riscv.XoriOp(sltu.rd, 1, rd=reg_type)
+            rewriter.insert_op(xori, InsertPoint.before(op))
+
+            # Cast result back
+            result_cast = UnrealizedConversionCastOp.create(operands=[xori.rd], result_types=[op.result.type])
+            rewriter.insert_op(result_cast, InsertPoint.before(op))
+
+            rewriter.replace_op(op, [], [result_cast.results[0]])
+
+
+class FixArithCmpiSlePass(ModulePass):
+    name = "fix-arith-cmpi-sle"
+
+    def apply(self, _: Context, op: ModuleOp) -> None:
+        PatternRewriteWalker(FixArithCmpiSle()).rewrite_module(op)
+
+
 #
 # drop unprintable ops
 #
@@ -543,35 +605,43 @@ class AddRecursionSupportPass(ModulePass):
         for func_op in op.walk():
             if not isinstance(func_op, riscv_func.FuncOp):
                 continue
-            if func_op.sym_name.data in ["main", "_start"]:
+            if func_op.sym_name.data in ["main", "_start", "_print_string", "_print_int", "_print_float"]:
                 continue
 
-            # Prologue
+            # Prologue: save RA and callee-saved registers
             block = func_op.body.blocks[0]
             if block.ops:
                 first_op = list(block.ops)[0]
-                add_sp = RISCVAddSpOp(-8)
-                save_ra = RISCVSaveRaOp()
 
+                # Allocate stack space for RA + 12 s registers = 13 * 8 = 104 bytes
+                add_sp = RISCVAddSpOp(-104)
                 block.insert_op_before(add_sp, first_op)
-                block.insert_op_before(save_ra, first_op)  # Insert save_ra before first_op (so after add_sp?)
-                # Wait:
-                # Start: [First]
-                # Insert add_sp before First -> [add_sp, First]
-                # Insert save_ra before First -> [add_sp, save_ra, First]
-                # Correct order: add_sp (-8), save_ra (sd).
 
-            # Epilogue
+                # Save RA at offset 0
+                save_ra = RISCVSaveRaOp()
+                block.insert_op_before(save_ra, first_op)
+
+                # Save s0-s11 at offsets 8, 16, 24, ..., 96
+                for i in range(12):
+                    save_s = RISCVDirectiveOp("sd", f"s{i}, {8 + i*8}(sp)")
+                    block.insert_op_before(save_s, first_op)
+
+            # Epilogue: restore registers and RA
             for b in func_op.body.blocks:
                 for ret in list(b.ops):
                     if isinstance(ret, riscv_func.ReturnOp):
-                        # INSERT BEFORE ret
-                        restore_ra = RISCVRestoreRaOp()
-                        rest_sp = RISCVAddSpOp(8)
+                        # Restore s11-s0 (reverse order)
+                        for i in range(11, -1, -1):
+                            restore_s = RISCVDirectiveOp("ld", f"s{i}, {8 + i*8}(sp)")
+                            b.insert_op_before(restore_s, ret)
 
+                        # Restore RA
+                        restore_ra = RISCVRestoreRaOp()
                         b.insert_op_before(restore_ra, ret)
+
+                        # Restore SP
+                        rest_sp = RISCVAddSpOp(104)
                         b.insert_op_before(rest_sp, ret)
-                        # Order: restore_ra, rest_sp, ret. Correct.
 
 
 class CustomScfIfToRiscvLowering(RewritePattern):
@@ -593,10 +663,7 @@ class CustomScfIfToRiscvLowering(RewritePattern):
         zero = riscv.GetRegisterOp(riscv.Registers.ZERO)
         rewriter.insert_op(zero, InsertPoint.before(op))
 
-        # BeqOp args: rs1, rs2, offset
-        beq = riscv.BeqOp(cond_cast.results[0], zero.res, offset=riscv.LabelAttr(else_label))
-        rewriter.insert_op(beq, InsertPoint.before(op))
-
+        # Stack allocation for results BEFORE the conditional branch
         res_ptrs = []
         if op.results:
             for res in op.results:
@@ -607,6 +674,10 @@ class CustomScfIfToRiscvLowering(RewritePattern):
                 rewriter.insert_op(sp, InsertPoint.before(op))
 
                 res_ptrs.append(sp.res)
+
+        # BeqOp args: rs1, rs2, offset - inserted AFTER stack allocation
+        beq = riscv.BeqOp(cond_cast.results[0], zero.res, offset=riscv.LabelAttr(else_label))
+        rewriter.insert_op(beq, InsertPoint.before(op))
 
         for bop in list(op.true_region.block.ops):
             if isinstance(bop, scf.YieldOp):
@@ -772,8 +843,9 @@ class MapToPhysicalRegistersPass(ModulePass):
                 continue
 
             # map to physical registers
-            physical_int_regs = [f"t{i}" for i in range(7)] + [f"s{i}" for i in range(12)]
-            physical_float_regs = [f"ft{i}" for i in range(12)] + [f"fs{i}" for i in range(12)]
+            # Prioritize callee-saved registers (s, fs) to avoid clobbering across function calls
+            physical_int_regs = [f"s{i}" for i in range(12)] + [f"t{i}" for i in range(7)]
+            physical_float_regs = [f"fs{i}" for i in range(12)] + [f"ft{i}" for i in range(12)]
 
             if len(virtual_int_regs) > len(physical_int_regs):
                 raise RuntimeError(f"too many virtual int registers: {len(virtual_int_regs)} > {len(physical_int_regs)}")

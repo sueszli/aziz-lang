@@ -41,7 +41,7 @@ def _assemble_and_link(asm_code: str, tmp: Path) -> Path:
 
 
 def _find_symbol_address(elf_path: Path, symbol_name: str) -> int:
-    # find memory address of symbol in ELF like "main"
+    # get mem address of a symbol in ELF (e.g. "main")
     nm_output = subprocess.run(["riscv64-unknown-elf-nm", elf_path], capture_output=True, text=True, check=True).stdout
     for line in nm_output.splitlines():
         if symbol_name in line:
@@ -59,26 +59,28 @@ def _load_elf_segments(elf: ELFFile, emulator: Uc) -> None:
 
 
 def _create_execution_hooks(emulator: Uc, output_buffer: list[str]) -> None:
-    # intercept syscalls and memory-mapped io during execution
+    # intercept syscalls and memory-mapped i/o during execution
+
     def code_hook(uc: Uc, addr: int, size_bytes: int, _) -> None:
-        # stop emulation when exit syscall is called
+        # exit syscall
         if uc.mem_read(addr, 4) != ECALL_INSTRUCTION:
             return
         if uc.reg_read(UC_RISCV_REG_A7) == SYSCALL_EXIT:
             uc.emu_stop()
 
     def mem_write_hook(uc: Uc, _, addr: int, size_bytes: int, value: int, __) -> None:
-        # capture writes to stdout and halt addresses
         if addr == STDOUT_ADDR:
+            # map writes to STDOUT_ADDR to console output
             output_buffer.append(chr(value & 0xFF))
         elif addr == HALT_ADDR and value == HALT_MAGIC_VALUE:
+            # map writes of HALT_MAGIC_VALUE to HALT_ADDR to emulator stop
             uc.emu_stop()
 
     emulator.hook_add(UC_HOOK_CODE, code_hook)
     emulator.hook_add(UC_HOOK_MEM_WRITE, mem_write_hook)
 
 
-def run_riscv(asm_code: str, entry_symbol: str = "main"):
+def emulate_riscv(asm_code: str, entry_symbol: str = "main") -> str:
     assert shutil.which("riscv64-unknown-elf-as") and shutil.which("riscv64-unknown-elf-ld"), "compiler not found"
     with tempfile.TemporaryDirectory() as tmp_dir_str:
         tmp_dir = Path(tmp_dir_str)
@@ -116,6 +118,4 @@ def run_riscv(asm_code: str, entry_symbol: str = "main"):
 
         reg_map = [("t0", UC_RISCV_REG_T0), ("t1", UC_RISCV_REG_T1), ("t2", UC_RISCV_REG_T2), ("a0", UC_RISCV_REG_A0), ("a1", UC_RISCV_REG_A1), ("a7", UC_RISCV_REG_A7)]
         result = {"output": "".join(output_buffer), "regs": {name: emulator.reg_read(reg_id) for name, reg_id in reg_map}}
-
-        print(f"{result['output']=}")
-        print(f"{result['regs']=}")
+        return result["output"]

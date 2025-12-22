@@ -8,6 +8,7 @@
 # ///
 
 import argparse
+import sys
 from functools import lru_cache
 from io import StringIO
 from pathlib import Path
@@ -17,7 +18,7 @@ from frontend.ast_nodes import dump
 from frontend.ir_gen import IRGen
 from frontend.parser import AzizParser
 from interpreter import AzizFunctions
-from qemu import run_riscv
+from qemu import emulate_riscv
 from rewrites.lower import LowerAzizPass
 from rewrites.lower_riscv import AddPrintRuntimePass, AddRecursionSupportPass, CustomLowerScfToRiscvPass, EmitDataSectionPass, LowerPrintfPass, LowerSelectPass, MapToPhysicalRegistersPass, RemoveUnprintableOpsPass
 from rewrites.optimize import OptimizeAzizPass
@@ -84,7 +85,7 @@ def lower_riscv_mut(module_op: ModuleOp):
     LowerPrintfPass().apply(ctx, module_op)  # printf -> print runtime calls (after type conversion)
     DeadCodeElimination().apply(ctx, module_op)  # dce
     ReconcileUnrealizedCastsPass().apply(ctx, module_op)  # cleanup casts
-    RISCVAllocateRegistersPass(allow_infinite=True).apply(ctx, module_op)  # virtual -> physical registers (no spilling check)
+    RISCVAllocateRegistersPass(allow_infinite=True).apply(ctx, module_op)  # virtual -> physical registers
     MapToPhysicalRegistersPass().apply(ctx, module_op)
     LowerRISCVFunc(insert_exit_syscall=True).apply(ctx, module_op)  # riscv_func -> riscv labels and jumps
     ConvertRiscvScfToRiscvCfPass().apply(ctx, module_op)
@@ -94,56 +95,59 @@ def lower_riscv_mut(module_op: ModuleOp):
 def main():
     parser = argparse.ArgumentParser(description="aziz language")
     parser.add_argument("file", help="source file")
-    xor_group = parser.add_mutually_exclusive_group()
-    xor_group.add_argument("--ast", action="store_true", help="print final ir")
-    xor_group.add_argument("--mlir", action="store_true", help="print final mlir")
-    xor_group.add_argument("--asm", action="store_true", help="emit RISC-V assembly")
-    xor_group.add_argument("--interpret", action="store_true", help="interpret the code")
+    parser.add_argument("--source", action="store_true", help="emit source code")
+    parser.add_argument("--ast", action="store_true", help="emit abstract syntax tree")
+    parser.add_argument("--mlir", action="store_true", help="emit mlir before and after optimization")
+    parser.add_argument("--interpret", action="store_true", help="interpret aziz mlir")
+    parser.add_argument("--asm", action="store_true", help="emit RISC-V assembly")
+    parser.add_argument("--execute", action="store_true", help="execute RISC-V assembly")
+    parser.add_argument("--all", action="store_true", help="emit all stages")
     args = parser.parse_args()
+    if args.all:
+        args.source = args.ast = args.mlir = args.interpret = args.asm = args.execute = True
+
     assert args.file.endswith(".aziz")
     src = Path(args.file).read_text()
 
-    module_ast = AzizParser(None, src).parse_module()  # source -> ast
-    module_op = IRGen().ir_gen_module(module_ast)  # ast -> mlir
-
-    gray = lambda s: f"\n\033[90m{'-' * 100}\n{s}\n{'-' * 100}\n\033[0m"
-
-    if args.ast:
-        print(gray("ast"))
-        print(dump(module_ast))
-        return
-
-    if args.interpret:
-        interpreter = Interpreter(module_op)
-        interpreter.register_implementations(AzizFunctions())
-        print(gray("mlir"))
-        print(module_op)
-        print(gray("interpretation result"))
-        interpreter.call_op("main", ())
-        return
-
-    orig = module_op.clone()
+    # source -> ast -> aziz mlir -> lowered mlir
+    module_ast = AzizParser(None, src).parse_module()
+    module_op = IRGen().ir_gen_module(module_ast)
+    orig1 = module_op.clone()
     lower_aziz_mut(module_op)
 
-    if args.mlir:
-        print(gray("before transformation"))
-        print(orig)
-        print(gray("after transformation"))
-        print(module_op)
-        return
+    # interpret
+    old_stdout = sys.stdout
+    sys.stdout = captured_output = StringIO()
+    interpreter = Interpreter(orig1)
+    interpreter.register_implementations(AzizFunctions())
+    interpreter.call_op("main", ())
+    sys.stdout = old_stdout
+    interpreter_result = captured_output.getvalue()
 
+    # lowered mlir -> riscv mlir
+    orig2 = module_op.clone()
     lower_riscv_mut(module_op)
 
-    if args.asm:
-        io = StringIO()
-        riscv.print_assembly(module_op, io)  # mlir riscv dialect -> riscv assembly
-        source = io.getvalue()
+    # execute
+    io = StringIO()
+    riscv.print_assembly(module_op, io)
+    source = io.getvalue()  # riscv mlir -> riscv assembly
+    result = emulate_riscv(source, entry_symbol="main")  # riscv assembly -> emulation result
 
-        print(gray("riscv assembly"))
-        print(source)
-        print(gray("emulation result"))
-        run_riscv(source, entry_symbol="main")
-        return
+    print_block = lambda title, content: print(f"\033[90m{'-' * 100}\n{title}\n{'-' * 100}\033[0m\n\n{content}\n")
+    if args.source:
+        print_block("source", src)
+    if args.ast:
+        print_block("ast", dump(module_ast))
+    if args.mlir:
+        print_block("before optimization", orig1)
+        print_block("after optimization", orig2)
+    if args.interpret:
+        print_block("interpreter result", interpreter_result)
+    if args.asm:
+        print_block("riscv assembly", source)
+    if args.execute:
+        print_block("emulator output", result)
 
 
 if __name__ == "__main__":
