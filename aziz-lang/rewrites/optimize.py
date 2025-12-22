@@ -78,6 +78,7 @@ class OptimizeAzizPass(ModulePass):
     name = "optimize-aziz"
 
     def apply(self, _: Context, op: ModuleOp) -> None:
+        # no GreedyRewritePatternApplier here because we want to control the order
         PatternRewriteWalker(InlineFunctions()).rewrite_module(op)
         PatternRewriteWalker(RemoveUnusedPrivateFunctions()).rewrite_module(op)
         dce(op)

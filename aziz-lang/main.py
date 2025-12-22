@@ -73,7 +73,7 @@ def lower_riscv_mut(module_op: ModuleOp):
 
     # lower func, memref, printf, arith, scf to riscv dialects
     LowerSelectPass().apply(ctx, module_op)  # convert arith.select to riscv (not supported by xdsl)
-    RemoveUnprintableOpsPass().apply(ctx, module_op)  # todo: bring back printf in assembly
+    RemoveUnprintableOpsPass().apply(ctx, module_op)
 
     ConvertFuncToRiscvFuncPass().apply(ctx, module_op)
     ConvertMemRefToRiscvPass().apply(ctx, module_op)

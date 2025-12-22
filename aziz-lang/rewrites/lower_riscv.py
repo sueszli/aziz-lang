@@ -148,6 +148,7 @@ class RemovePrintfOpLowering(RewritePattern):
         rewriter.erase_op(op, safe_erase=False)
 
 
+# bring back printf, write some util function in assembly
 class RemoveUnprintableOpsPass(ModulePass):
     name = "remove-unprintable-ops"
 
