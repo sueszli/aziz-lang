@@ -9,7 +9,7 @@ from xdsl.pattern_rewriter import PatternRewriter, PatternRewriteWalker, Rewrite
 from xdsl.rewriter import InsertPoint
 
 #
-# custom risc-v assembly ops
+# custom risc-v assembly ops (used later in lowering)
 #
 
 
@@ -138,10 +138,12 @@ class RemoveUnprintableOpsPass(ModulePass):
     name = "remove-unprintable-ops"
 
     def apply(self, ctx: Context, op: ModuleOp):
+        # llvm.global ops -> riscv.global ops
         for g in [o for o in op.walk() if isinstance(o, llvm.GlobalOp)]:
             g.parent_block().insert_op_before(RISCVGlobalOp(g.sym_name.data, g.value, g.constant is not None), g)
             g.detach()
 
+        # llvm.addressof -> riscv.la opss
         for a in [o for o in op.walk() if isinstance(o, llvm.AddressOfOp)]:
             la = RISCVLaOp(a.global_name.root_reference.data, riscv.IntRegisterType.unallocated())
             a.parent_block().insert_op_before(la, a)
@@ -152,11 +154,14 @@ class RemoveUnprintableOpsPass(ModulePass):
 class LowerRISCVGlobalOp(RewritePattern):
     @op_type_rewrite_pattern
     def match_and_rewrite(self, op: RISCVGlobalOp, rewriter: PatternRewriter):
-        # Escape string data safely
         data = bytes(op.value.data.data)
         content = data.split(b"\0", 1)[0].decode("utf-8", errors="replace")
         escaped = content.translate(str.maketrans({"\n": "\\n", "\t": "\\t", '"': '\\"', "\\": "\\\\"}))
 
+        # .data               # switch to data section
+        # .globl str_hello    # make symbol visible to linker
+        # str_hello:          # define the label
+        # .string "hello!"    # emit the string data
         rewriter.insert_op(RISCVDirectiveOp(".data"), InsertPoint.before(op))
         rewriter.insert_op(RISCVDirectiveOp(".globl", op.sym_name.data), InsertPoint.before(op))
         rewriter.insert_op(RISCVLabelOp(op.sym_name.data), InsertPoint.before(op))
@@ -169,7 +174,7 @@ class EmitDataSectionPass(ModulePass):
 
     def apply(self, ctx: Context, op: ModuleOp):
         PatternRewriteWalker(LowerRISCVGlobalOp()).rewrite_module(op)
-        # Prepend .text to first function
+        # prepend .text to first function (which is "main" in our case)
         if f_op := next((o for o in op.body.blocks[0].ops if isinstance(o, (riscv_func.FuncOp, func.FuncOp))), None):
             op.body.blocks[0].insert_op_before(RISCVDirectiveOp(".text"), f_op)
 
