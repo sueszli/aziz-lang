@@ -538,9 +538,10 @@ class MapToPhysicalRegistersPass(ModulePass):
             if new_result_types == list(op.result_types):
                 return
 
-            # create new operation with physical register types
+            # create new op with physical register types
             new_op = op.__class__.create(operands=op.operands, result_types=new_result_types, attributes=op.attributes, successors=op.successors)
-            # move regions from old to new operation
+
+            # move regions
             for idx, region in enumerate(op.regions):
                 region.move_blocks(new_op.regions[idx])
 
@@ -560,17 +561,17 @@ class MapToPhysicalRegistersPass(ModulePass):
         all_blocks = [(region, block) for region in target_op.regions for block in list(region.blocks)]
         for region, block in all_blocks:
             new_arg_types = [get_physical_reg(arg.type) for arg in block.args]
-
-            # skip if no type changes needed
             if not any(new_type != arg.type for new_type, arg in zip(new_arg_types, block.args)):
                 return
 
-            # create new block with physical register types
+            # create new block
             new_block = Block(arg_types=new_arg_types)
+
             # replace all uses of old arguments with new arguments
             for old_arg, new_arg in zip(block.args, new_block.args):
                 old_arg.replace_by(new_arg)
-            # move all operations from old block to new block
+
+            # move all ops from old block to new block
             while block.ops:
                 first_op = block.first_op
                 first_op.detach()
@@ -583,9 +584,7 @@ class MapToPhysicalRegistersPass(ModulePass):
 
         # (3) update function signature to use physical register types
 
-        if not isinstance(target_op, (riscv_func.FuncOp, func.FuncOp)):
-            return
-        if not target_op.body.blocks:
+        if not isinstance(target_op, (riscv_func.FuncOp, func.FuncOp)) or not target_op.function_type:
             return
 
         input_types = [arg.type for arg in target_op.body.blocks[0].args]
