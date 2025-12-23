@@ -90,7 +90,7 @@ def lower_riscv_mut(module_op: ModuleOp):
 
 
 def print_block(title, content):
-    width = 70
+    width = 50
     title_text = f" {title} "
     padding = (width - 2 - len(title_text)) // 2
     print(f"\033[90m╭{'─' * (width - 2)}╮\033[0m")
