@@ -132,7 +132,15 @@ def main():
     result = emulate_riscv(source, entry_symbol="main")
 
     # print results
-    print_block = lambda title, content: print(f"\033[90m{'-' * 70}\n{title}\n{'-' * 70}\033[0m\n\n{content}\n")
+    def print_block(title, content):
+        width = 70
+        title_text = f" {title} "
+        padding = (width - 2 - len(title_text)) // 2
+        print(f"\033[90m╭{'─' * (width - 2)}╮\033[0m")
+        print(f"\033[90m│{' ' * padding}{title_text}{' ' * (width - 2 - len(title_text) - padding)}│\033[0m")
+        print(f"\033[90m╰{'─' * (width - 2)}╯\033[0m")
+        print(f"\n{content}\n")
+    
     if args.source:
         print_block("source", src)
     if args.ast:
