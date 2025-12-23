@@ -4,7 +4,7 @@ from qemu import STDOUT_ADDR
 from xdsl.context import Context
 from xdsl.dialects import arith, func, llvm, printf, riscv, riscv_func, scf
 from xdsl.dialects.builtin import IntegerAttr, ModuleOp, StringAttr, SymbolRefAttr, UnrealizedConversionCastOp
-from xdsl.ir import Attribute, Block, Operation, Region, SSAValue
+from xdsl.ir import Attribute, Block, Region, SSAValue
 from xdsl.irdl import attr_def, base, irdl_op_definition, result_def
 from xdsl.passes import ModulePass
 from xdsl.pattern_rewriter import PatternRewriter, PatternRewriteWalker, RewritePattern, op_type_rewrite_pattern
@@ -466,67 +466,44 @@ class CustomScfIfToRiscvLowering(RewritePattern):
             res_ptrs.append(riscv.GetRegisterOp(riscv.Registers.SP))
             rewriter.insert_op(res_ptrs[-1], InsertPoint.before(op))
 
-        # reg_cond != zero -> jump to else label
-        # reg_cond == zero -> no jump needed, fall through to continuation
+        def emit_branch(region: Region, jump_to: str | None = None):
+            if not region.block:
+                return
+            # go through all ops in branch region
+            for o in list(region.block.ops):
+                if isinstance(o, scf.YieldOp):
+                    # store returned values to stack
+                    for i, val in enumerate(o.operands):
+                        vc = UnrealizedConversionCastOp.create(operands=[val], result_types=[rtype])
+                        rewriter.insert_op(vc, InsertPoint.before(op))
+                        rewriter.insert_op(riscv.SwOp(res_ptrs[i].res, vc.results[0], 0), InsertPoint.before(op))
+                else:
+                    # keep as is
+                    o.detach()
+                    rewriter.insert_op(o, InsertPoint.before(op))
+            # optional jump after branch
+            if jump_to:
+                rewriter.insert_op(RISCVDirectiveOp("j", jump_to), InsertPoint.before(op))
+
+        # beq: if (condition == 0) jump to lbl_else
+        # otherwise fall through to true branch
         rewriter.insert_op(riscv.BeqOp(reg_cond.results[0], zero.res, offset=riscv.LabelAttr(lbl_else)), InsertPoint.before(op))
-        self._emit_region(op.true_region, rewriter, op, res_ptrs, rtype, dest_lbl=lbl_cont) # true branch
+        emit_branch(op.true_region, jump_to=lbl_cont)  # true branch with jump over else
         rewriter.insert_op(RISCVLabelOp(lbl_else), InsertPoint.before(op))
-        self._emit_region(op.false_region, rewriter, op, res_ptrs, rtype) # else branch
-        
-        # continuation label where both branches meet
+        emit_branch(op.false_region)  # else branch (falls through)
         rewriter.insert_op(RISCVLabelOp(lbl_cont), InsertPoint.before(op))
 
-        # load results from stack and convert back to original types
+        # load results from stack
         finals = []
         for i, ptr in enumerate(res_ptrs):
-            load = riscv.LwOp(ptr.res, 0, rd=rtype)  # lw: load word from stack
+            load = riscv.LwOp(ptr.res, 0, rd=rtype)
             rewriter.insert_op(load, InsertPoint.before(op))
-            fn = UnrealizedConversionCastOp.create(operands=[load.rd], result_types=[op.results[i].type])
-            rewriter.insert_op(fn, InsertPoint.before(op))
-            finals.append(fn.results[0])
-            rewriter.insert_op(RISCVDirectiveOp("addi", "sp, sp, 8"), InsertPoint.before(op))  # deallocate stack slot
+            cast_back = UnrealizedConversionCastOp.create(operands=[load.rd], result_types=[op.results[i].type])
+            rewriter.insert_op(cast_back, InsertPoint.before(op))
+            finals.append(cast_back.results[0])
+            rewriter.insert_op(RISCVDirectiveOp("addi", "sp, sp, 8"), InsertPoint.before(op))
 
-        # replace the original if-op with the loaded results
         rewriter.replace_op(op, [], finals)
-
-    def _emit_region(self, region: Region, rewriter: PatternRewriter, insert_point: Operation, res_ptrs: list[riscv.GetRegisterOp], rtype: Attribute, dest_lbl: str | None = None):
-        """
-        Emit operations from a region (true or false branch).
-        - Replaces scf.YieldOp with stack stores (sw) to save results
-        - Moves all other operations inline
-        - Optionally jumps to dest_lbl at end
-        """
-        if not region.block:
-            return
-
-        for o in list(region.block.ops):
-            if isinstance(o, scf.YieldOp):
-                self._emit_yield(o, rewriter, insert_point, res_ptrs, rtype)
-            else:
-                # regular operation - move it inline
-                o.detach()
-                rewriter.insert_op(o, InsertPoint.before(insert_point))
-
-        if dest_lbl:
-            # jump to continuation label (skips the else branch)
-            rewriter.insert_op(RISCVDirectiveOp("j", dest_lbl), InsertPoint.before(insert_point))
-
-    def _emit_yield(
-        self,
-        op: scf.YieldOp,
-        rewriter: PatternRewriter,
-        insert_point: Operation,
-        res_ptrs: list[riscv.GetRegisterOp],
-        rtype: Attribute,
-    ):
-        # YieldOp returns values from the branch - store them to stack
-        for i, val in enumerate(op.operands):
-            vc = UnrealizedConversionCastOp.create(operands=[val], result_types=[rtype])
-            rewriter.insert_op(vc, InsertPoint.before(insert_point))
-            rewriter.insert_op(
-                riscv.SwOp(res_ptrs[i].res, vc.results[0], 0),
-                InsertPoint.before(insert_point),
-            )  # sw: store word
 
 
 class CustomLowerScfToRiscvPass(ModulePass):
