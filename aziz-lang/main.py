@@ -89,14 +89,13 @@ def lower_riscv_mut(module_op: ModuleOp):
     module_op.verify()
 
 
-def print_block(title, content):
+def print_title(title):
     width = 70
     title_text = f" {title} "
     padding = (width - 2 - len(title_text)) // 2
     print(f"\033[90m╭{'─' * (width - 2)}╮\033[0m")
     print(f"\033[90m│{' ' * padding}{title_text}{' ' * (width - 2 - len(title_text) - padding)}│\033[0m")
     print(f"\033[90m╰{'─' * (width - 2)}╯\033[0m")
-    print(f"\n{content}\n")
 
 
 def main():
@@ -143,18 +142,25 @@ def main():
 
     # print results
     if args.source:
-        print_block("source", src)
+        print_title("source")
+        print(f"\n{src}\n")
     if args.ast:
-        print_block("ast", dump(module_ast))
+        print_title("ast")
+        print(f"\n{dump(module_ast)}\n")
     if args.mlir:
-        print_block("mlir before optimization", orig1)
-        print_block("mlir after optimization", orig2)
+        print_title("mlir before optimization")
+        print(f"\n{orig1}\n")
+        print_title("mlir after optimization")
+        print(f"\n{orig2}\n")
     if args.interpret:
-        print_block("interpreter output", interpreter_result)
+        print_title("interpreter output")
+        print(f"\n{interpreter_result}\n")
     if args.asm:
-        print_block("riscv assembly", source)
+        print_title("riscv assembly")
+        print(f"\n{source}\n")
     if args.execute:
-        print_block("emulator output", result)
+        print_title("emulator output")
+        print(f"\n{result}\n")
 
 
 if __name__ == "__main__":
