@@ -525,7 +525,7 @@ class MapToPhysicalRegistersPass(ModulePass):
         for f in [o for o in op.walk() if isinstance(o, riscv_func.FuncOp)]:
             self._process_func(f)
 
-    def _process_func(self, f):
+    def _process_func(self, f: riscv_func.FuncOp) -> None:
         # (1) collect virtual registers
 
         v_int, v_flt = set(), set()
@@ -558,7 +558,7 @@ class MapToPhysicalRegistersPass(ModulePass):
 
         # (3) apply mapping
 
-        def remap_type(t):
+        def get_physical(t):
             n = self.get_reg_name(t)
             if n in imap:
                 return riscv.IntRegisterType.from_name(imap[n])
@@ -566,13 +566,12 @@ class MapToPhysicalRegistersPass(ModulePass):
                 return riscv.FloatRegisterType.from_name(fmap[n])
             return t
 
-        all_ops = list(f.walk())
-        all_ops.append(f)
+        all_ops = list(f.walk()) + [f]
         for o in all_ops:
-            # Remap results
+            # remap results
             target_op = o
             if hasattr(o, "result_types"):
-                new_t = [remap_type(t) for t in o.result_types]
+                new_t = [get_physical(t) for t in o.result_types]
                 if new_t != list(o.result_types):
                     new_op = o.__class__.create(operands=o.operands, result_types=new_t, attributes=o.attributes, successors=o.successors)
                     for i, r in enumerate(o.regions):
@@ -585,10 +584,10 @@ class MapToPhysicalRegistersPass(ModulePass):
                         o.detach()
                     target_op = new_op
 
-            # Remap region args
+            # remap region args
             for r in target_op.regions:
                 for b in list(r.blocks):
-                    new_types = [remap_type(a.type) for a in b.args]
+                    new_types = [get_physical(a.type) for a in b.args]
                     if any(n != a.type for n, a in zip(new_types, b.args)):
                         new_b = Block(arg_types=new_types)
                         for old_a, new_a in zip(b.args, new_b.args):
@@ -598,16 +597,16 @@ class MapToPhysicalRegistersPass(ModulePass):
                             op.detach()
                             new_b.add_op(op)
 
-                        # Replace block
+                        # replace block
                         idx = next(i for i, blk in enumerate(r.blocks) if blk is b)
                         r.detach_block(b)
                         r.insert_block(new_b, idx)
 
-            # Update FuncOp signature
+            # update FuncOp signature
             if isinstance(target_op, (riscv_func.FuncOp, func.FuncOp)):
                 if target_op.body.blocks:
                     in_t = [a.type for a in target_op.body.blocks[0].args]
-                    out_t = [remap_type(t) for t in target_op.function_type.outputs]
+                    out_t = [get_physical(t) for t in target_op.function_type.outputs]
                     target_op.function_type = func.FunctionType.from_lists(in_t, out_t)
 
     @staticmethod
