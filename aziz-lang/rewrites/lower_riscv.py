@@ -392,31 +392,48 @@ class AddPrintRuntimePass(ModulePass):
 
 
 class AddRecursionSupportPass(ModulePass):
+    # adds code to all user-defined functions to support recursion and function calls.
+    # - pushes current frame (return address and callee-saved registers) onto the stack at function entry (prologue).
+    # - restores frame from stack before returning (epilogue).
     name = "add-recursion-support"
-    FRAME_SZ = 104  # ra + 12 s-regs (8 bytes each)
+    FRAME_SZ = 104  # ra (8 bytes) + 12 s-regs (s0-s11, 8 bytes each) = 8 + 96 = 104 bytes
 
-    def apply(self, ctx: Context, op: ModuleOp):
+    def apply(self, ctx: Context, op: ModuleOp) -> None:
         skip = {"main", "_start", "_print_string", "_print_int", "_print_float"}
-        for f in [f for f in op.walk() if isinstance(f, riscv_func.FuncOp) and f.sym_name.data not in skip]:
+
+        user_functions = [f for f in op.walk() if isinstance(f, riscv_func.FuncOp) and f.sym_name.data not in skip]
+        for f in user_functions:
             self._prologue(f.body.blocks[0])
+
+            # epilogues, per return statement (could be multiple per function)
             for ret in [r for b in f.body.blocks for r in b.ops if isinstance(r, riscv_func.ReturnOp)]:
                 self._epilogue(ret)
 
-    def _emit(self, block, point, ops):
-        for o in ops:
-            block.insert_op_before(o, point)
-
-    def _prologue(self, blk):
+    def _prologue(self, blk: Block) -> None:
         if not blk.ops:
             return
-        ops = [RISCVDirectiveOp("addi", f"sp, sp, -{self.FRAME_SZ}"), RISCVDirectiveOp("sd", "ra, 0(sp)")]
-        ops += [RISCVDirectiveOp("sd", f"s{i}, {8 + i*8}(sp)") for i in range(12)]
-        self._emit(blk, list(blk.ops)[0], ops)
 
-    def _epilogue(self, ret):
-        ops = [RISCVDirectiveOp("ld", f"s{i}, {8 + i*8}(sp)") for i in range(12)]
-        ops += [RISCVDirectiveOp("ld", "ra, 0(sp)"), RISCVDirectiveOp("addi", f"sp, sp, {self.FRAME_SZ}")]
-        self._emit(ret.parent_block(), ret, ops)
+        ops: list[RISCVDirectiveOp] = [
+            RISCVDirectiveOp("addi", f"sp, sp, -{self.FRAME_SZ}"),  # allocate stack space, move stack pointer
+            RISCVDirectiveOp("sd", "ra, 0(sp)"),  # store return address (ra) at offset 0
+        ]
+        ops += [RISCVDirectiveOp("sd", f"s{i}, {8 + i*8}(sp)") for i in range(12)]  # store callee-saved registers (s0-s11) at offsets 8 to 104
+
+        self._emit(blk, list(blk.ops)[0], ops)  # insert before first op in block
+
+    def _epilogue(self, ret: riscv_func.ReturnOp) -> None:
+        ops: list[RISCVDirectiveOp] = [RISCVDirectiveOp("ld", f"s{i}, {8 + i*8}(sp)") for i in range(12)]
+
+        ops += [
+            RISCVDirectiveOp("ld", "ra, 0(sp)"),  # restore return address from offset 0
+            RISCVDirectiveOp("addi", f"sp, sp, {self.FRAME_SZ}"),  # deallocate stack frame
+        ]
+
+        self._emit(ret.parent_block(), ret, ops)  # insert before return operation
+
+    def _emit(self, block: Block, point: riscv.RISCVAsmOperation, ops: list[RISCVDirectiveOp]) -> None:
+        for o in ops:
+            block.insert_op_before(o, point)
 
 
 #
