@@ -4,7 +4,7 @@
 ⠀⠀⠀⠀⠀⠀⢸⣿⣿⣿⣧⠀⠀     aziz programming language,
 ⠀⠀⠀⠀⠀⠀⣼⣿⣿⣿⣿⣆⠀     a Common Lisp subset compiler
 ⠀⠀⠀⠀⠀⣼⣿⣿⣿⣿⣿⣿⡀     
-⠀⠀⠀⠀⣴⣿⣿⣿⠟⣿⣿⣿⣷     front end and IR built with MLIR (xDSL)
+⠀⠀⠀⠀⣴⣿⣿⣿⠟⣿⣿⣿⣷     front end and IR built with xDSL
 ⠀⠀⠀⣰⣿⣿⣿⡏⠀⠸⣿⣿⣿⣇    lowered to RISC-V assembly
 ⠀⠀⢠⣿⣿⣿⡟⠀⠀⠀⢻⣿⣿⣿⡆   run via QEMU emulation
 ⠀⢠⣿⣿⣿⡿⠀⠀⠀⠀⠀⢿⣿⣿⣷⣤⡄
