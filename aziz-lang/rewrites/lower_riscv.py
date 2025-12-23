@@ -437,7 +437,7 @@ class AddRecursionSupportPass(ModulePass):
 
 
 #
-# control flow (SCF)
+# scf.YieldOp lowering
 #
 
 
