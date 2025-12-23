@@ -89,6 +89,16 @@ def lower_riscv_mut(module_op: ModuleOp):
     module_op.verify()
 
 
+def print_block(title, content):
+    width = 70
+    title_text = f" {title} "
+    padding = (width - 2 - len(title_text)) // 2
+    print(f"\033[90m╭{'─' * (width - 2)}╮\033[0m")
+    print(f"\033[90m│{' ' * padding}{title_text}{' ' * (width - 2 - len(title_text) - padding)}│\033[0m")
+    print(f"\033[90m╰{'─' * (width - 2)}╯\033[0m")
+    print(f"\n{content}\n")
+
+
 def main():
     parser = argparse.ArgumentParser(description="aziz language")
     parser.add_argument("file", help="source file")
@@ -132,15 +142,6 @@ def main():
     result = emulate_riscv(source, entry_symbol="main")
 
     # print results
-    def print_block(title, content):
-        width = 70
-        title_text = f" {title} "
-        padding = (width - 2 - len(title_text)) // 2
-        print(f"\033[90m╭{'─' * (width - 2)}╮\033[0m")
-        print(f"\033[90m│{' ' * padding}{title_text}{' ' * (width - 2 - len(title_text) - padding)}│\033[0m")
-        print(f"\033[90m╰{'─' * (width - 2)}╯\033[0m")
-        print(f"\n{content}\n")
-    
     if args.source:
         print_block("source", src)
     if args.ast:
