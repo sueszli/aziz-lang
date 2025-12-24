@@ -19,5 +19,15 @@ fmt:
 .PHONY: run
 run:
 	for file in examples/*.aziz; do \
+		echo "------------------------------------------------------------ $$file"; \
 		uv run aziz-lang/main.py $$file --interpret --execute-riscv --execute-llvm; \
+	done
+
+.PHONY: run-tiny
+run-tiny:
+	for file in examples/*.aziz; do \
+		echo "------------------------------------------------------------ $$file"; \
+		cat $$file; \
+		echo "---"; \
+		uv run aziz-lang-tiny/main.py $$file | mlir-opt --convert-scf-to-cf --convert-func-to-llvm --convert-arith-to-llvm --convert-cf-to-llvm --reconcile-unrealized-casts | mlir-translate --mlir-to-llvmir | lli; \
 	done
