@@ -2,7 +2,7 @@ from pathlib import Path
 
 from aziz import BinaryExprAST, CallExprAST, FunctionAST, IfExprAST, ModuleAST, NumberExprAST, PrintExprAST, PrototypeAST, StringExprAST, VariableExprAST
 from lark import Lark, Transformer, v_args
-from xdsl.utils.lexer import Location, Span
+from xdsl.utils.lexer import Input, Location, Span
 
 grammar = r"""
     start: top_level*
@@ -55,8 +55,6 @@ class AzizTransformer(Transformer):
 
     @property
     def _input(self):
-        from xdsl.utils.lexer import Input
-
         if not hasattr(self, "__input"):
             self.__input = Input(self.program, self.file)
         return self.__input
