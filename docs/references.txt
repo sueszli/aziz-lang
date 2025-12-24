@@ -1,0 +1,4 @@
+references:
+
+- https://mlir.llvm.org/docs/Tutorials/Toy/
+- https://github.com/xdslproject/xdsl/tree/main/docs/Toy
