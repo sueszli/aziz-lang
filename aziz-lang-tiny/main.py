@@ -10,19 +10,19 @@
 import argparse
 import subprocess
 import tempfile
-from functools import lru_cache
 from parser import AzizParser
 from pathlib import Path
 
 import aziz
 from ir_gen import IRGen
-from llvm_exec import execute_llvm
 from lower import LowerAzizPass
 from lower_llvm import LowerPrintfToLLVMCallPass
+from optimize import OptimizeAzizPass
 from xdsl.context import Context
-from xdsl.dialects import affine, arith, func, printf, riscv, riscv_func, riscv_scf, scf
-from xdsl.dialects.builtin import Builtin, ModuleOp
+from xdsl.dialects import affine, arith, func, printf, scf
+from xdsl.dialects.builtin import Builtin
 from xdsl.transforms.canonicalize import CanonicalizePass
+from xdsl.transforms.lower_affine import LowerAffinePass
 
 
 def main():
@@ -38,29 +38,33 @@ def main():
     module_ast = AzizParser(None, src).parse_module()
     module_op = IRGen().ir_gen_module(module_ast)
 
-    module_op_llvm = module_op.clone()
-    lower_llvm_mut(module_op_llvm)
-    llvm_ir, llvm_exec_out, llvm_exec_err = execute_llvm(module_op_llvm)
+    print(f"{'-' * 30} MLIR before optimization")
+    print(module_op)
 
-    print(llvm_ir)
-
-    print(f"{'-' * 30} LLVM output")
-
-    print(llvm_exec_out)
-    print(llvm_exec_err)
-
-
-def lower_llvm_mut(module_op: ModuleOp):
     ctx = context()
-    # OptimizeAzizPass().apply(ctx, module_op)
+    OptimizeAzizPass().apply(ctx, module_op)
+    module_op.verify()
+
+    print(f"{'-' * 30} MLIR after optimization")
+    print(module_op)
+
     LowerAzizPass().apply(ctx, module_op)
     LowerAffinePass().apply(ctx, module_op)
     CanonicalizePass().apply(ctx, module_op)
     LowerPrintfToLLVMCallPass().apply(ctx, module_op)
     module_op.verify()
 
+    print(f"{'-' * 30} MLIR lowered to LLVM dialect")
+    print(module_op)
 
-@lru_cache(None)
+    llvm_ir, llvm_exec_out, llvm_exec_err = execute_llvm(module_op)
+    print(llvm_ir)
+
+    print(f"{'-' * 30} LLVM output")
+    print(llvm_exec_out)
+    print(llvm_exec_err)
+
+
 def context() -> Context:
     ctx = Context()
     ctx.load_dialect(aziz.Aziz)
@@ -69,9 +73,6 @@ def context() -> Context:
     ctx.load_dialect(Builtin)
     ctx.load_dialect(func.Func)
     ctx.load_dialect(printf.Printf)
-    ctx.load_dialect(riscv_func.RISCV_Func)
-    ctx.load_dialect(riscv_scf.RISCV_Scf)
-    ctx.load_dialect(riscv.RISCV)
     ctx.load_dialect(scf.Scf)
     return ctx
 
