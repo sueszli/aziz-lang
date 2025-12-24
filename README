@@ -13,44 +13,44 @@
 
 compilation pipeline:
 
-            Source Code (.aziz)
+            source code (.aziz)
                     │
                     ├─── lexer
                     ▼
-                Token Stream
+               token stream
                     │
                     ├─── parser
                     ▼
-        Abstract Syntax Tree (AST)
+        abstract syntax tree (AST)
                     │
                     ├─── IR generation
                     ▼
-          aziz Dialect (Custom MLIR)
+          aziz dialect (custom MLIR)
                     │
                     ├─── optimization
                     ▼
-              Optimized MLIR
+              optimized MLIR
                     │
                     │
     ┌───────────────┼───────────────┐
     │               │               │
     ▼               ▼               ▼
-Interpret     LLVM Backend    RISC-V Backend
+interpret     LLVM backend    RISC-V backend
                     │               │
                     ├─── lower      ├─── lower
                     ▼               ▼
-              LLVM Dialect    RISC-V Dialect
+              LLVM dialect    RISC-V dialect
                     │               │
                     ├─── emit       ├─── codegen
                     ▼               ▼
-                 LLVM IR      RISC-V Assembly
+                 LLVM IR      RISC-V assembly
                     │               │
                     ├─── compile    │
                     ▼               │
-              Native Binary         │
+              native binary         │
                     │               │
                     ▼               ▼
-                 Execute         Emulate
+                 execute         emulate
 
 based on:
 
