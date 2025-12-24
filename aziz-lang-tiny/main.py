@@ -39,7 +39,7 @@ def main():
     module_op = IRGen().ir_gen_module(module_ast)
 
     if args.debug:
-        print(f"\n\n{'-' * 30} MLIR before optimization\n\n")
+        print(f"\n\n{'-' * 80} MLIR before optimization\n\n")
         print(module_op)
 
     ctx = context()
@@ -47,7 +47,7 @@ def main():
     module_op.verify()
 
     if args.debug:
-        print(f"\n\n{'-' * 30} MLIR after optimization\n\n")
+        print(f"\n\n{'-' * 80} MLIR after optimization\n\n")
         print(module_op)
 
     LowerAzizPass().apply(ctx, module_op)
@@ -57,7 +57,7 @@ def main():
     module_op.verify()
 
     if args.debug:
-        print(f"\n\n{'-' * 30} MLIR after lowering to LLVM dialect\n\n")
+        print(f"\n\n{'-' * 80} MLIR after lowering to LLVM dialect\n\n")
     print(module_op)
 
 
