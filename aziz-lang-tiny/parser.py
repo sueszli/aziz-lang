@@ -77,7 +77,7 @@ class AzizTransformer(Transformer):
         args: list[str] = []
         body_start_index = 1
 
-        # Check if second item is the args list (from args rule)
+        # check if second item is the args list (from args rule)
         if len(items) > 1 and isinstance(items[1], list):
             args = items[1]
             body_start_index = 2
