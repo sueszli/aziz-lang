@@ -1,3 +1,6 @@
+(defun unused (x)
+  (+ x x))
+
 (defun square (x)
   (* x x))
 
