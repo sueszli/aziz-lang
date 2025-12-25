@@ -20,6 +20,7 @@ from xdsl.dialects.builtin import f64, i8, i32
 from xdsl.ir import Block, Region
 from xdsl.passes import ModulePass
 from xdsl.pattern_rewriter import PatternRewriteWalker, RewritePattern, op_type_rewrite_pattern
+from xdsl.transforms.canonicalize import CanonicalizePass
 from xdsl.transforms.dead_code_elimination import dce
 
 #
@@ -75,7 +76,7 @@ class IRGen:
 
             # create mlir func_op
             entry = Block(arg_types=arg_types)
-            func_op = func.FuncOp(func_name, ftype, Region(entry))
+            func_op = func.FuncOp(func_name, ftype, Region(entry), visibility=StringAttr("private"))
             self.module.body.blocks[0].add_op(func_op)
 
             # enter function scope
@@ -248,6 +249,7 @@ class InlineFunctions(RewritePattern):
     def match_and_rewrite(self, op: func.CallOp, rewriter: PatternRewriteWalker):
         if not self._callee(op):
             return
+        # don't inline recursive calls
         if any(isinstance(c, func.CallOp) and c.callee.string_value() == self._callee(op).sym_name.data for c in self._callee(op).walk()):
             return
 
@@ -290,6 +292,7 @@ class OptimizePass(ModulePass):
 
     def apply(self, _, op: ModuleOp):
         PatternRewriteWalker(InlineFunctions()).rewrite_module(op)
+        CanonicalizePass().apply(_, op)
         PatternRewriteWalker(RemoveUnusedPrivateFunctions()).rewrite_module(op)
         dce(op)
 
@@ -302,18 +305,16 @@ if __name__ == "__main__":
 
     tree = Lark(GRAMMAR, start="start").parse(Path(args.file).read_text())
     module_op = IRGen().gen(tree)
-
-    if args.debug:
-        print(f"\n{'-'*80} source\n{Path(args.file).read_text()}")
-        print(f"\n{'-'*80} mlir before optimization\n{module_op}")
+    orig_module_op = module_op.clone()
 
     ctx = Context()
     for d in [arith.Arith, builtin.Builtin, func.Func, scf.Scf, llvm.LLVM]:
         ctx.load_dialect(d)
-
     OptimizePass().apply(ctx, module_op)
     module_op.verify()
 
     if args.debug:
+        print(f"\n{'-'*80} source\n{Path(args.file).read_text()}")
+        print(f"\n{'-'*80} mlir before optimization\n{orig_module_op}")
         print(f"\n{'-'*80} mlir after optimization\n")
     print(module_op)
