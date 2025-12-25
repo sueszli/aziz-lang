@@ -27,6 +27,7 @@ from xdsl.transforms.dead_code_elimination import dce
 # parsing + ir gen
 #
 
+
 GRAMMAR = r"""
 start: top_level*
 ?top_level: defun | expr
@@ -249,16 +250,15 @@ class InlineFunctions(RewritePattern):
     def match_and_rewrite(self, op: func.CallOp, rewriter: PatternRewriteWalker):
         if not self._callee(op):
             return
-        # don't inline recursive calls
-        if any(isinstance(c, func.CallOp) and c.callee.string_value() == self._callee(op).sym_name.data for c in self._callee(op).walk()):
+        is_recursive = any(isinstance(c, func.CallOp) and c.callee.string_value() == self._callee(op).sym_name.data for c in self._callee(op).walk())
+        if is_recursive:
             return
 
-        # clone block and inline
-        blk = self._callee(op).clone().body.blocks[0]
-        for opr, arg in zip(op.operands, blk.args):
+        copy = self._callee(op).clone().body.blocks[0]
+        for opr, arg in zip(op.operands, copy.args):
             arg.replace_by(opr)
 
-        ops = list(blk.ops)
+        ops = list(copy.ops)
         ret = ops[-1]
         for o in ops[:-1]:
             o.detach()
@@ -268,10 +268,10 @@ class InlineFunctions(RewritePattern):
 
     @lru_cache(None)
     def _callee(self, op):
-        mod = op
-        while not isinstance(mod, ModuleOp):
-            mod = mod.parent_op()
-        return next((o for o in mod.body.blocks[0].ops if isinstance(o, func.FuncOp) and o.sym_name.data == op.callee.string_value()), None)
+        top_most_module = op
+        while not isinstance(top_most_module, ModuleOp):
+            top_most_module = top_most_module.parent_op()
+        return next((o for o in top_most_module.body.blocks[0].ops if isinstance(o, func.FuncOp) and o.sym_name.data == op.callee.string_value()), None)
 
 
 class RemoveUnusedPrivateFunctions(RewritePattern):
